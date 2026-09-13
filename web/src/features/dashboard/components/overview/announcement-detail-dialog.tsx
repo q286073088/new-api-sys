@@ -20,7 +20,6 @@ import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
 import { RichContent } from '@/components/rich-content'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatDateTimeObject } from '@/lib/time'
 
 interface AnnouncementDetailModalProps {
@@ -46,37 +45,29 @@ export function AnnouncementDetailModal({
       open={open}
       onOpenChange={onOpenChange}
       title={t('Announcement Details')}
-      description={
-        announcement?.publishDate
-          ? `${t('Published:')} ${formatDateTimeObject(new Date(announcement.publishDate))}`
-          : undefined
-      }
+      headerClassName='sr-only'
       contentClassName='sm:max-w-lg'
       contentHeight='auto'
-      bodyClassName='space-y-4'
+      bodyClassName='space-y-4 pr-6'
     >
-      <ScrollArea className='max-h-[min(58vh,520px)] pr-4'>
-        <div className='space-y-4'>
-          {announcement?.content && (
-            <div>
-              <h4 className='mb-2 font-medium'>{t('Content')}</h4>
-              <RichContent breaks content={announcement.content} />
-            </div>
-          )}
-          {announcement?.extra && (
-            <div>
-              <h4 className='mb-2 font-medium'>
-                {t('Additional Information')}
-              </h4>
-              <RichContent
-                breaks
-                content={announcement.extra}
-                className='text-muted-foreground'
-              />
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+      {announcement?.content && (
+        <RichContent breaks content={announcement.content} />
+      )}
+      {announcement?.extra && (
+        <RichContent
+          breaks
+          content={announcement.extra}
+          className='text-muted-foreground border-t pt-4'
+        />
+      )}
+      {announcement?.publishDate && (
+        <p className='text-muted-foreground text-xs'>
+          {t('Published:')}{' '}
+          <time dateTime={announcement.publishDate}>
+            {formatDateTimeObject(new Date(announcement.publishDate))}
+          </time>
+        </p>
+      )}
     </Dialog>
   )
 }

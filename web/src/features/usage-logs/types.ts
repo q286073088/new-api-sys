@@ -113,8 +113,40 @@ export interface ToolSurchargeItem {
   price: number
 }
 
+export interface RequestDiagnostics {
+  node_name?: string
+  attempt_number?: number
+  client_user_agent?: string
+  client_protocol?: string
+  client_context_error?: string
+  client_deadline?: string
+  request_body_bytes?: number
+  estimated_input_tokens?: number
+  request_elapsed_ms?: number
+  downstream_status?: number
+  downstream_written_bytes?: number
+  upstream_host?: string
+  upstream_status?: number
+  upstream_protocol?: string
+  upstream_request_id?: string
+  upstream_error_kind?: string
+  upstream_error?: string
+  upstream_read_error?: string
+  headers_elapsed_ms?: number
+  stream_elapsed_ms?: number
+  first_event_elapsed_ms?: number
+  last_upstream_activity_ms?: number
+  received_events?: number
+  relay_timeout_seconds?: number
+  stream_idle_timeout_seconds?: number
+  client_write_timeout_seconds?: number
+  ping_enabled?: boolean
+  ping_interval_seconds?: number
+}
+
 export interface LogOtherData {
   admin_info?: {
+    request_diagnostics?: RequestDiagnostics
     is_multi_key?: boolean
     multi_key_index?: number
     use_channel?: number[]

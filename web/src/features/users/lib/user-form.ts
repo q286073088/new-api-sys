@@ -27,7 +27,7 @@ import { quotaUnitsToDollars } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
 
 import { DEFAULT_GROUP } from '../constants'
-import { type UserFormData, type User } from '../types'
+import type { UserFormData, User } from '../types'
 
 // ============================================================================
 // Form Schema
@@ -47,6 +47,22 @@ export const userFormSchema = z.object({
 })
 
 export type UserFormValues = z.infer<typeof userFormSchema>
+
+export const userEmailSchema = z.object({
+  subject: z
+    .string()
+    .trim()
+    .min(1, 'Enter an email subject.')
+    .max(160, 'The subject must be at most 160 characters.')
+    .refine((value) => !/[\r\n]/.test(value), 'Enter an email subject.'),
+  content: z
+    .string()
+    .trim()
+    .min(1, 'Enter the email content.')
+    .max(20000, 'The content must be at most 20,000 characters.'),
+})
+
+export type UserEmailValues = z.infer<typeof userEmailSchema>
 
 // ============================================================================
 // Form Defaults

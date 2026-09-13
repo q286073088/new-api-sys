@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
 
+import { JsonEditor } from '@/components/json-editor'
 import {
   Form,
   FormControl,
@@ -76,7 +77,28 @@ const createRoutingReliabilitySchema = (
 ) =>
   z
     .object({
-      RetryTimes: z.coerce.number().min(0).max(10),
+      RetryTimes: z.coerce.number().int().min(0).max(10),
+      ModelRetryTimes: z.string().refine((value) => {
+        try {
+          const parsed: unknown = JSON.parse(value.trim() || '{}')
+          return (
+            parsed !== null &&
+            typeof parsed === 'object' &&
+            !Array.isArray(parsed) &&
+            Object.entries(parsed).every(
+              ([name, count]) =>
+                name.trim() !== '' &&
+                name === name.trim() &&
+                typeof count === 'number' &&
+                Number.isInteger(count) &&
+                count >= 0 &&
+                count <= 10
+            )
+          )
+        } catch {
+          return false
+        }
+      }, t('Use exact model names and whole retry counts from 0 to 10.')),
       ChannelDisableThreshold: numericString,
       AutomaticDisableChannelEnabled: z.boolean(),
       AutomaticEnableChannelEnabled: z.boolean(),
@@ -137,6 +159,7 @@ type RoutingReliabilityFormInput = z.input<RoutingReliabilitySchema>
 type RoutingReliabilitySectionProps = {
   defaultValues: {
     RetryTimes: number
+    ModelRetryTimes: string
     ChannelDisableThreshold: string
     AutomaticDisableChannelEnabled: boolean
     AutomaticEnableChannelEnabled: boolean
@@ -156,6 +179,7 @@ function normalizeLineEndings(value: string) {
 
 type NormalizedRoutingReliabilityValues = {
   RetryTimes: number
+  ModelRetryTimes: string
   ChannelDisableThreshold: string
   AutomaticDisableChannelEnabled: boolean
   AutomaticEnableChannelEnabled: boolean
@@ -179,6 +203,7 @@ const buildFormDefaults = (
   defaults: RoutingReliabilitySectionProps['defaultValues']
 ): RoutingReliabilityFormInput => ({
   RetryTimes: defaults.RetryTimes ?? 0,
+  ModelRetryTimes: defaults.ModelRetryTimes || '{}',
   ChannelDisableThreshold: defaults.ChannelDisableThreshold ?? '',
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
@@ -204,6 +229,7 @@ const normalizeDefaults = (
   defaults: RoutingReliabilitySectionProps['defaultValues']
 ): NormalizedRoutingReliabilityValues => ({
   RetryTimes: defaults.RetryTimes ?? 0,
+  ModelRetryTimes: defaults.ModelRetryTimes || '{}',
   ChannelDisableThreshold: (defaults.ChannelDisableThreshold ?? '').trim(),
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
@@ -231,6 +257,7 @@ const normalizeFormValues = (
   values: RoutingReliabilityFormValues
 ): NormalizedRoutingReliabilityValues => ({
   RetryTimes: values.RetryTimes,
+  ModelRetryTimes: values.ModelRetryTimes.trim() || '{}',
   ChannelDisableThreshold: values.ChannelDisableThreshold.trim(),
   AutomaticDisableChannelEnabled: values.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: values.AutomaticEnableChannelEnabled,
@@ -281,6 +308,7 @@ export function RoutingReliabilitySection({
   const autoDisableStatusCodes = form.watch('AutomaticDisableStatusCodes')
   const autoRetryStatusCodes = form.watch('AutomaticRetryStatusCodes')
   const channelTestMode = form.watch('monitor_setting.channel_test_mode')
+  const autoEnable = form.watch('AutomaticEnableChannelEnabled')
   let channelTestModeDescription: string
   switch (channelTestMode) {
     case 'auto_ban_only':
@@ -359,6 +387,38 @@ export function RoutingReliabilitySection({
                     </FormControl>
                     <FormDescription>
                       {t('Number of times to retry failed requests (0-10)')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='ModelRetryTimes'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Per-model retry limits')}</FormLabel>
+                    <FormControl>
+                      <div
+                        role='group'
+                        aria-label={t('Per-model retry limits')}
+                      >
+                        <JsonEditor
+                          value={field.value}
+                          onChange={field.onChange}
+                          valueType='any'
+                          keyLabel={t('Model Name')}
+                          keyPlaceholder={t('Model Name')}
+                          valueLabel={t('Retry Times')}
+                          valuePlaceholder={t('Retry Times')}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Use the model name requested by the client. A model override limits retries across the entire request; 0 disables retries. Unlisted models keep the global and cross-group retry behavior.'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -544,6 +604,14 @@ export function RoutingReliabilitySection({
                         {t(
                           'Bring channels back online after successful checks'
                         )}
+                        {channelTestMode === 'passive_recovery' &&
+                          !autoEnable && (
+                            <span className='block text-amber-600 dark:text-amber-400'>
+                              {t(
+                                'Recovery checks will not enable channels until this switch is turned on.'
+                              )}
+                            </span>
+                          )}
                       </FormDescription>
                     </SettingsSwitchContent>
                     <FormControl>

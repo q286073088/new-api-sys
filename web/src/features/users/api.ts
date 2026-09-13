@@ -130,6 +130,38 @@ export async function manageUser(
   return res.data
 }
 
+export async function manageUsers(ids: number[], action: 'enable' | 'disable') {
+  const succeeded: number[] = []
+  const failed: { id: number; error: unknown }[] = []
+  for (let offset = 0; offset < ids.length; offset += 5) {
+    const batch = ids.slice(offset, offset + 5)
+    const results = await Promise.allSettled(
+      batch.map(async (id) =>
+        requireServerSuccess(await manageUser(id, action))
+      )
+    )
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') succeeded.push(batch[index])
+      else failed.push({ id: batch[index], error: result.reason })
+    })
+  }
+  return { succeeded, failed }
+}
+
+export async function sendUserEmails(payload: {
+  ids?: number[]
+  all_users: boolean
+  request_id: string
+  subject: string
+  content: string
+}) {
+  const response = await api.post<{
+    success: boolean
+    data: { queued: number; skipped: number }
+  }>('/api/user/email', payload)
+  return requireServerSuccess(response.data).data
+}
+
 /**
  * Adjust user quota atomically (add/subtract/override)
  */

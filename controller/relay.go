@@ -192,9 +192,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
+	model.BeginRelayErrorLogs(c)
+	var finalPerformanceSample *perfmetrics.Sample
+	defer func() {
+		model.FlushRelayErrorLogs(c, newAPIError == nil)
+		if finalPerformanceSample != nil {
+			sample := *finalPerformanceSample
+			gopool.Go(func() { perfmetrics.Record(sample) })
+		}
+	}()
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
-		relayInfo.RetryIndex = retryParam.GetRetry()
+	for ; retryParam.GetRemainingRetries() >= 0; retryParam.IncreaseRetry() {
+		relayInfo.RetryIndex = retryParam.Attempt
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
@@ -218,6 +227,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
+		relayInfo.PerformanceAttempt = &relaycommon.RelayPerformanceAttempt{StartedAt: time.Now()}
 
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
@@ -229,6 +239,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		default:
 			newAPIError = relayHandler(c, relayInfo)
 		}
+		sample := perfmetrics.CaptureRelaySample(relayInfo, newAPIError == nil, relayInfo.PerformanceAttempt.OutputTokens, time.Now())
+		finalPerformanceSample = &sample
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil
@@ -240,7 +252,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError, relayInfo)
 
-		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
+		if !shouldRetry(c, newAPIError, retryParam.GetRemainingRetries()) {
 			break
 		}
 	}
@@ -249,11 +261,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if len(useChannel) > 1 {
 		retryLogStr := fmt.Sprintf("重试：%s", strings.Trim(strings.Join(strings.Fields(fmt.Sprint(useChannel)), "->"), "[]"))
 		logger.LogInfo(c, retryLogStr)
-	}
-	if newAPIError != nil {
-		gopool.Go(func() {
-			perfmetrics.RecordRelaySample(relayInfo, false, 0)
-		})
 	}
 }
 
@@ -623,10 +630,13 @@ func executeTaskSubmissionWith(
 		Retry:       common.GetPointer(0),
 	}
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	model.BeginRelayErrorLogs(c)
+	defer func() { model.FlushRelayErrorLogs(c, taskErr == nil && result != nil) }()
+	for ; retryParam.GetRemainingRetries() >= 0; retryParam.IncreaseRetry() {
+		relayInfo.RetryIndex = retryParam.Attempt
 		stage = "select_channel"
 		if requestErr := c.Request.Context().Err(); requestErr != nil {
-			diagnostics.cancelled("before_attempt", retryParam.GetRetry()+1)
+			diagnostics.cancelled("before_attempt", retryParam.Attempt+1)
 			taskErr = service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
 			break
 		}
@@ -649,7 +659,7 @@ func executeTaskSubmissionWith(
 				break
 			}
 		}
-		diagnostics.attempt(retryParam.GetRetry()+1, channel, relayInfo.LockedChannel != nil)
+		diagnostics.attempt(retryParam.Attempt+1, channel, relayInfo.LockedChannel != nil)
 
 		addUsedChannel(c, channel.Id)
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
@@ -667,12 +677,12 @@ func executeTaskSubmissionWith(
 		stage = "submit"
 		result, taskErr = submit(c, relayInfo)
 		if requestErr := c.Request.Context().Err(); requestErr != nil {
-			diagnostics.cancelled("after_submit", retryParam.GetRetry()+1)
+			diagnostics.cancelled("after_submit", retryParam.Attempt+1)
 			taskErr = service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
 			break
 		}
 		if taskErr == nil {
-			diagnostics.attemptSucceeded(retryParam.GetRetry()+1, result)
+			diagnostics.attemptSucceeded(retryParam.Attempt+1, result)
 			break
 		}
 
@@ -684,8 +694,8 @@ func executeTaskSubmissionWith(
 				relayInfo)
 		}
 
-		willRetry := shouldRetryTaskRelay(c, channel.Id, taskErr, common.RetryTimes-retryParam.GetRetry())
-		diagnostics.attemptFailed(retryParam.GetRetry()+1, channel, taskErr, willRetry)
+		willRetry := shouldRetryTaskRelay(c, channel.Id, taskErr, retryParam.GetRemainingRetries())
+		diagnostics.attemptFailed(retryParam.Attempt+1, channel, taskErr, willRetry)
 		if !willRetry {
 			break
 		}
@@ -707,7 +717,7 @@ func executeTaskSubmissionWith(
 		return nil, taskErr
 	}
 	if requestErr := c.Request.Context().Err(); requestErr != nil {
-		diagnostics.cancelled("before_reserve", retryParam.GetRetry()+1)
+		diagnostics.cancelled("before_reserve", retryParam.Attempt+1)
 		return nil, service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
 	}
 
@@ -726,7 +736,7 @@ func executeTaskSubmissionWith(
 		diagnostics.reserve("reserve_complete", result.Quota)
 	}
 	if requestErr := c.Request.Context().Err(); requestErr != nil {
-		diagnostics.cancelled("before_insert", retryParam.GetRetry()+1)
+		diagnostics.cancelled("before_insert", retryParam.Attempt+1)
 		return nil, service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
 	}
 

@@ -338,6 +338,8 @@ func migrateDB() error {
 		&Channel{},
 		&Token{},
 		&User{},
+		&AnnouncementView{},
+		&EmailNotification{},
 		&UserSession{},
 		&AuthFlow{},
 		&ExternalIdentityClaim{},
@@ -349,6 +351,7 @@ func migrateDB() error {
 		&Log{},
 		&Midjourney{},
 		&TopUp{},
+		&ReferralReward{},
 		&QuotaData{},
 		&Task{},
 		&TaskPlugin{},
@@ -407,6 +410,9 @@ func migrateClickHouseLogDB() error {
 	if err := LOG_DB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
 		return err
 	}
+	if err := LOG_DB.Exec("ALTER TABLE logs ADD COLUMN IF NOT EXISTS hidden_for_user UInt8 DEFAULT 0").Error; err != nil {
+		return err
+	}
 	return syncClickHouseLogTTL(ttlDays)
 }
 
@@ -455,6 +461,7 @@ CREATE TABLE IF NOT EXISTS logs (
 	ip String DEFAULT '',
 	request_id String DEFAULT '',
 	upstream_request_id String DEFAULT '',
+	hidden_for_user UInt8 DEFAULT 0,
 	other String DEFAULT ''
 )
 ENGINE = MergeTree()

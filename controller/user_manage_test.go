@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -66,7 +67,7 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 			}
 		}
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.CasbinRule{}, &model.AuthzRole{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.TopUp{}, &model.ReferralReward{}, &model.EmailNotification{}))
 	require.NoError(t, logDB.AutoMigrate(&model.Log{}, &model.AuditLog{}))
 	versionQuery := "SELECT version()"
 	if dialect == "sqlite" {
@@ -76,6 +77,177 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Raw(versionQuery).Scan(&version).Error)
 	t.Logf("database: %s %s, separate log database: %v", dialect, version, logDB != db)
 	return db
+}
+
+func TestUserEmailRecipientsAndAuthorization(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		role        int
+		ids         []int
+		subject     string
+		content     string
+		all, noAuth bool
+		wantQueued  int
+		wantSuccess bool
+	}{
+		{name: "selected", role: common.RoleRootUser, ids: []int{2, 2, 3, 4, 7, 999}, wantQueued: 1, wantSuccess: true},
+		{name: "root_all", role: common.RoleRootUser, all: true, wantQueued: 3, wantSuccess: true},
+		{name: "admin_all", role: common.RoleAdminUser, all: true, wantQueued: 2, wantSuccess: true},
+		{name: "peer_admin_rejected_atomically", role: common.RoleAdminUser, ids: []int{2, 5}},
+		{name: "ordinary_user", role: common.RoleCommonUser, ids: []int{2}},
+		{name: "anonymous", role: common.RoleRootUser, noAuth: true, ids: []int{2}},
+		{name: "invalid_id", role: common.RoleRootUser, ids: []int{0}},
+		{name: "no_recipients", role: common.RoleRootUser},
+		{name: "ambiguous_scope", role: common.RoleRootUser, ids: []int{2}, all: true},
+		{name: "subject_newline", role: common.RoleRootUser, ids: []int{2}, subject: "Hello\r\nBcc: other@example.test"},
+		{name: "subject_too_long", role: common.RoleRootUser, ids: []int{2}, subject: strings.Repeat("标", 161)},
+		{name: "empty_content", role: common.RoleRootUser, ids: []int{2}, content: " \n "},
+		{name: "content_too_long", role: common.RoleRootUser, ids: []int{2}, content: strings.Repeat("文", 20001)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupManageUserTestDB(t)
+			require.NoError(t, db.AutoMigrate(&model.EmailNotification{}))
+			oldServer, oldFrom := common.SMTPServer, common.SMTPFrom
+			common.SMTPServer, common.SMTPFrom = "smtp.example.invalid", "sender@example.test"
+			t.Cleanup(func() { common.SMTPServer, common.SMTPFrom = oldServer, oldFrom })
+			pat := "email-test-token"
+			operator := model.User{Id: 9999, Username: "mail-operator", Role: tc.role, Status: common.UserStatusEnabled, AuthVersion: 1, AccessToken: &pat}
+			require.NoError(t, db.Create(&operator).Error)
+			for _, user := range []model.User{
+				{Id: 2, Username: "recipient", Role: common.RoleCommonUser, Email: "recipient@example.test"},
+				{Id: 3, Username: "no-email", Role: common.RoleCommonUser},
+				{Id: 4, Username: "deleted", Role: common.RoleCommonUser, Email: "deleted@example.test"},
+				{Id: 5, Username: "peer-admin", Role: common.RoleAdminUser, Email: "peer@example.test"},
+				{Id: 6, Username: "dormant", Role: common.RoleCommonUser, Status: common.UserStatusDisabled, Email: "dormant@example.test"},
+				{Id: 7, Username: "invalid-email", Role: common.RoleCommonUser, Email: "bad@example.test\r\nBcc: other@example.test"},
+			} {
+				user.AffCode = user.Username
+				require.NoError(t, db.Create(&user).Error)
+			}
+			require.NoError(t, db.Delete(&model.User{}, 4).Error)
+			router := gin.New()
+			router.POST("/api/user/email", middleware.AdminAuth(), SendUserEmails)
+			subject, content := tc.subject, tc.content
+			if subject == "" {
+				subject = "Welcome back"
+			}
+			if content == "" {
+				content = "<b>Welcome</b>\nA new message"
+			}
+			payload := common.GetJsonString(map[string]any{"ids": tc.ids, "all_users": tc.all, "request_id": "20cec7e0-7371-4df3-8ce7-af9b0bff439a", "subject": subject, "content": content})
+			for range 2 {
+				r := httptest.NewRequest(http.MethodPost, "/api/user/email", strings.NewReader(payload))
+				r.Header.Set("Content-Type", "application/json")
+				if !tc.noAuth {
+					r.Header.Set("Authorization", "Bearer "+pat)
+				}
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, r)
+				assert.Contains(t, w.Body.String(), fmt.Sprintf(`"success":%t`, tc.wantSuccess))
+			}
+			var emails []model.EmailNotification
+			require.NoError(t, db.Find(&emails).Error)
+			assert.Len(t, emails, tc.wantQueued, "replaying a request must not enqueue duplicates")
+			for _, email := range emails {
+				assert.NotEqual(t, 4, email.UserID)
+				assert.Equal(t, "pending", email.Status)
+				assert.Contains(t, email.Content, "&lt;b&gt;Welcome&lt;/b&gt;")
+			}
+		})
+	}
+}
+
+func TestAnnouncementViewsUseAuthenticatedAccount(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.AnnouncementView{}))
+	for range 2 {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("id", 7)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/user/self/announcement-views", strings.NewReader(`{"user_id":8,"key":"id:news"}`))
+		MarkAnnouncementViewed(c)
+		assert.Contains(t, w.Body.String(), `"success":true`)
+	}
+	for _, id := range []int{7, 8} {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("id", id)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/user/self/announcement-views", nil)
+		GetAnnouncementViews(c)
+		var response struct {
+			Success bool
+			Data    []string
+		}
+		require.NoError(t, common.Unmarshal(w.Body.Bytes(), &response))
+		assert.True(t, response.Success)
+		if id == 7 {
+			assert.Equal(t, []string{"id:news"}, response.Data)
+		} else {
+			assert.Empty(t, response.Data)
+		}
+	}
+}
+
+func TestReferralEndpointsKeepAuthenticatedUserScope(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.TopUp{}, &model.ReferralReward{}))
+	for _, user := range []model.User{
+		{Id: 1, Username: "owner", AffCode: "owner", AffQuota: 500},
+		{Id: 2, Username: "invited", AffCode: "invited", InviterId: 1, Email: "private@example.com"},
+		{Id: 3, Username: "team", AffCode: "team", InviterId: 2},
+		{Id: 4, Username: "other", AffCode: "other", AffQuota: 9999},
+	} {
+		require.NoError(t, db.Create(&user).Error)
+	}
+	for _, test := range []struct {
+		query string
+		code  int
+		name  string
+	}{
+		{"?user_id=4", http.StatusOK, "invited"},
+		{"?parent_id=2", http.StatusOK, "team"},
+		{"?parent_id=3", http.StatusForbidden, ""},
+		{"?parent_id=4", http.StatusForbidden, ""},
+		{"?parent_id=-1", http.StatusBadRequest, ""},
+		{"?p=-1", http.StatusBadRequest, ""},
+		{"?page_size=-1", http.StatusBadRequest, ""},
+	} {
+		t.Run(test.query, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Set("id", 1)
+			ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/referrals"+test.query, nil)
+			GetReferralInvitees(ctx)
+			assert.Equal(t, test.code, recorder.Code)
+			assert.NotContains(t, recorder.Body.String(), "private@example.com")
+			if test.name != "" {
+				assert.Contains(t, recorder.Body.String(), `"username":"`+test.name+`"`)
+				assert.NotContains(t, recorder.Body.String(), `"username":"other"`)
+			}
+		})
+	}
+	for _, reward := range []model.ReferralReward{
+		{TopUpID: 1, UserID: 1, InviteeID: 2, DirectInviteeID: 2, Level: 1, Quota: 100, Status: model.ReferralRewardPending},
+		{TopUpID: 2, UserID: 4, InviteeID: 3, DirectInviteeID: 3, Level: 1, Quota: 9999, Status: model.ReferralRewardPending},
+	} {
+		require.NoError(t, db.Create(&reward).Error)
+	}
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("id", 1)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/referrals/rewards?user_id=4", nil)
+	GetReferralRewards(ctx)
+	assert.Contains(t, recorder.Body.String(), `"quota":100`)
+	assert.NotContains(t, recorder.Body.String(), "9999")
+
+	recorder = httptest.NewRecorder()
+	ctx, _ = gin.CreateTestContext(recorder)
+	ctx.Set("id", 1)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/referrals/summary?user_id=4", nil)
+	GetReferralSummary(ctx)
+	assert.Contains(t, recorder.Body.String(), `"available_quota":500`)
+	assert.Contains(t, recorder.Body.String(), `"pending_quota":100`)
+	assert.NotContains(t, recorder.Body.String(), "9999")
 }
 
 func performManageUserRequest(t *testing.T, body string) *httptest.ResponseRecorder {
@@ -491,9 +663,12 @@ func TestManageUserQuotaConcurrentSnapshots(t *testing.T) {
 	require.NoError(t, db.Create(&user).Error)
 	var ready sync.WaitGroup
 	ready.Add(2)
+	var initialReads atomic.Int32
 	release := make(chan struct{})
 	require.NoError(t, db.Callback().Query().Before("gorm:query").Register("test:concurrent_quota_start", func(tx *gorm.DB) {
-		if tx.Statement.Table == "users" {
+		// Only synchronize the initial balance reads. Referral and notification
+		// recipient lookups happen later in the same transactions.
+		if tx.Statement.Table == "users" && initialReads.Add(1) <= 2 {
 			ready.Done()
 			<-release
 		}

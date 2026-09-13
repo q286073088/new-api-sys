@@ -84,10 +84,11 @@ func InitChannelCache() {
 	for i, channel := range newChannelId2channel {
 		if channel.ChannelInfo.IsMultiKey {
 			channel.Keys = channel.GetKeys()
-			if channel.ChannelInfo.MultiKeyMode == constant.MultiKeyModePolling {
+			if channel.ChannelInfo.MultiKeyMode == constant.MultiKeyModePolling || channel.Status == common.ChannelStatusAutoDisabled {
 				if oldChannel, ok := channelsIDM[i]; ok {
 					// 存在旧的渠道，如果是多key且轮询，保留轮询索引信息
-					if oldChannel.ChannelInfo.IsMultiKey && oldChannel.ChannelInfo.MultiKeyMode == constant.MultiKeyModePolling {
+					// 自动禁用渠道也使用轮询探测，随机模式下同样需要保留恢复进度。
+					if oldChannel.ChannelInfo.IsMultiKey && (oldChannel.ChannelInfo.MultiKeyMode == constant.MultiKeyModePolling || oldChannel.Status == common.ChannelStatusAutoDisabled) {
 						channel.ChannelInfo.MultiKeyPollingIndex = oldChannel.ChannelInfo.MultiKeyPollingIndex
 					}
 				}

@@ -41,6 +41,56 @@ export type PaymentResponse = ApiResponse<Record<string, unknown>> & {
 export type StripePaymentResponse = ApiResponse<{ pay_link: string }>
 export type AffiliateCodeResponse = ApiResponse<string>
 export type AffiliateTransferResponse = ApiResponse
+
+export interface ReferralSettings {
+  enabled: boolean
+  level1_percent: number
+  level2_percent: number
+  delay_days: number
+}
+
+export interface ReferralOverview {
+  summary: {
+    direct_count: number
+    team_count: number
+    available_quota: number
+    total_earned: number
+    pending_quota: number
+  }
+  settings: ReferralSettings
+}
+
+export interface ReferralInvitee {
+  id: number
+  username: string
+  display_name: string
+  created_at: number
+  topup_quota: number
+  direct_reward_quota: number
+  team_reward_quota: number
+  pending_quota: number
+}
+
+export interface ReferralReward {
+  id: number
+  invitee_id: number
+  invitee_username: string
+  level: number
+  base_quota: number
+  rate: number
+  quota: number
+  status: 'pending' | 'settled' | 'cancelled'
+  created_at: number
+  available_at: number
+  settled_at: number
+}
+
+export interface ReferralPage<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
 export type CreemPaymentResponse = ApiResponse<{ checkout_url: string }>
 export type WaffoPaymentResponse = ApiResponse<
   { payment_url?: string } | string

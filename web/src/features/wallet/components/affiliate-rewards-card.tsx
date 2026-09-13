@@ -27,12 +27,14 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatQuota } from '@/lib/format'
 
-import type { UserWalletData } from '../types'
+import type { ReferralOverview, UserWalletData } from '../types'
 
 interface AffiliateRewardsCardProps {
   user: UserWalletData | null
   affiliateLink: string
   onTransfer: () => void
+  onViewDetails: () => void
+  summary?: ReferralOverview['summary']
   complianceConfirmed?: boolean
   loading?: boolean
 }
@@ -41,6 +43,8 @@ export function AffiliateRewardsCard({
   user,
   affiliateLink,
   onTransfer,
+  onViewDetails,
+  summary,
   complianceConfirmed = true,
   loading,
 }: AffiliateRewardsCardProps) {
@@ -60,7 +64,7 @@ export function AffiliateRewardsCard({
     )
   }
 
-  const hasRewards = (user?.aff_quota ?? 0) > 0
+  const hasRewards = (summary?.available_quota ?? user?.aff_quota ?? 0) > 0
 
   return (
     <Card data-card-hover='false' className='bg-muted/20 py-0'>
@@ -78,14 +82,37 @@ export function AffiliateRewardsCard({
                 'Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.'
               )}
             </p>
+            <Button
+              variant='link'
+              size='sm'
+              className='mt-1 h-auto p-0'
+              onClick={onViewDetails}
+            >
+              {t('Referral Details')}
+            </Button>
           </div>
         </div>
 
-        <div className='grid grid-cols-3 gap-1.5 text-center'>
+        <div className='grid grid-cols-2 gap-2 text-center'>
           {[
-            [t('Pending'), formatQuota(user?.aff_quota ?? 0)],
-            [t('Total Earned'), formatQuota(user?.aff_history_quota ?? 0)],
-            [t('Invites'), String(user?.aff_count ?? 0)],
+            [
+              t('Available Rewards'),
+              formatQuota(summary?.available_quota ?? user?.aff_quota ?? 0),
+            ],
+            [
+              t('Pending Rewards'),
+              summary ? formatQuota(summary.pending_quota) : '—',
+            ],
+            [
+              t('Total Earned'),
+              formatQuota(
+                summary?.total_earned ?? user?.aff_history_quota ?? 0
+              ),
+            ],
+            [
+              t('Invites'),
+              String(summary?.direct_count ?? user?.aff_count ?? 0),
+            ],
           ].map(([label, value]) => (
             <div key={label}>
               <div className='text-muted-foreground truncate text-[10px] font-medium tracking-wider uppercase'>

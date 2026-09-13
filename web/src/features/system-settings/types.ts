@@ -230,6 +230,7 @@ export type ModelSettings = {
   DefaultUseAutoGroup: boolean
   'group_ratio_setting.group_special_usable_group': string
   RetryTimes: number
+  ModelRetryTimes: string
   ChannelDisableThreshold: string
   AutomaticDisableChannelEnabled: boolean
   AutomaticEnableChannelEnabled: boolean
@@ -254,6 +255,7 @@ export type ModelSettings = {
 }
 
 export type BillingSettings = {
+  ReferralSetting: string
   QuotaForNewUser: number
   PreConsumedQuota: number
   QuotaForInviter: number

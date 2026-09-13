@@ -17,15 +17,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Plus } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 
+import { UsersEmailDialog } from './users-email-dialog'
 import { useUsers } from './users-provider'
 
-export function UsersPrimaryButtons() {
+export function UsersPrimaryButtons(props: { selectedUserIds: number[] }) {
   const { t } = useTranslation()
   const { setOpen, setCurrentRow } = useUsers()
+  const [emailRecipients, setEmailRecipients] = useState<number[] | null>(null)
 
   const handleCreate = () => {
     setCurrentRow(null)
@@ -33,11 +36,24 @@ export function UsersPrimaryButtons() {
   }
 
   return (
-    <div className='flex gap-2'>
+    <div className='flex flex-wrap gap-2'>
+      <Button
+        size='sm'
+        variant='outline'
+        onClick={() => setEmailRecipients([...props.selectedUserIds])}
+      >
+        {t('Re-engage users')}
+      </Button>
       <Button size='sm' onClick={handleCreate}>
         <Plus className='h-4 w-4' />
         {t('Add User')}
       </Button>
+      {emailRecipients !== null && (
+        <UsersEmailDialog
+          ids={emailRecipients.length > 0 ? emailRecipients : undefined}
+          onClose={() => setEmailRecipients(null)}
+        />
+      )}
     </div>
   )
 }

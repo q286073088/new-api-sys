@@ -22,6 +22,43 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+	service.RegisterSystemTaskHandler(referralSettlementHandler{})
+	service.RegisterSystemTaskHandler(emailDeliveryHandler{})
+}
+
+type emailDeliveryHandler struct{}
+
+func (emailDeliveryHandler) Type() string { return model.SystemTaskTypeEmailDelivery }
+func (emailDeliveryHandler) Enabled() bool {
+	return common.SMTPServer != "" && (common.SMTPFrom != "" || common.SMTPAccount != "") && model.HasDueEmailNotifications()
+}
+func (emailDeliveryHandler) Interval() time.Duration { return time.Minute }
+func (emailDeliveryHandler) NewPayload() any         { return nil }
+func (emailDeliveryHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	summary, err := model.DispatchEmailNotifications(ctx, common.GetTimestamp(), common.SendEmail)
+	status := model.SystemTaskStatusSucceeded
+	if err != nil {
+		status = model.SystemTaskStatusFailed
+	}
+	finishSystemTaskHandler(task, runnerID, status, summary, err)
+}
+
+type referralSettlementHandler struct{}
+
+func (referralSettlementHandler) Type() string { return model.SystemTaskTypeReferralSettlement }
+func (referralSettlementHandler) Enabled() bool {
+	return operation_setting.IsPaymentComplianceConfirmed()
+}
+func (referralSettlementHandler) Interval() time.Duration { return time.Minute }
+func (referralSettlementHandler) NewPayload() any         { return nil }
+
+func (referralSettlementHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	count, err := model.SettleDueReferralRewards(ctx, common.GetTimestamp())
+	status := model.SystemTaskStatusSucceeded
+	if err != nil {
+		status = model.SystemTaskStatusFailed
+	}
+	finishSystemTaskHandler(task, runnerID, status, map[string]int{"settled_count": count}, err)
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and

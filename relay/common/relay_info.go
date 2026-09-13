@@ -81,17 +81,38 @@ type TokenCountMeta struct {
 	estimatePromptTokens int
 }
 
-type RelayInfo struct {
-	TokenId           int
-	TokenKey          string
-	TokenGroup        string
-	UserId            int
-	UsingGroup        string // 使用的分组，当auto跨分组重试时，会变动
-	UserGroup         string // 用户所在分组
-	TokenUnlimited    bool
-	StartTime         time.Time
+// UpstreamDiagnostics describes one HTTP attempt without retaining its body or headers.
+type UpstreamDiagnostics struct {
+	StartedAt   time.Time
+	CompletedAt time.Time
+	Host        string
+	StatusCode  int
+	Protocol    string
+	RequestID   string
+	Timeout     time.Duration
+	Err         error
+}
+
+// RelayPerformanceAttempt keeps model-square timing separate from the complete
+// request duration retained in administrator diagnostics and usage logs.
+type RelayPerformanceAttempt struct {
+	StartedAt         time.Time
 	FirstResponseTime time.Time
-	isFirstResponse   bool
+	OutputTokens      int64
+}
+
+type RelayInfo struct {
+	TokenId            int
+	TokenKey           string
+	TokenGroup         string
+	UserId             int
+	UsingGroup         string // 使用的分组，当auto跨分组重试时，会变动
+	UserGroup          string // 用户所在分组
+	TokenUnlimited     bool
+	StartTime          time.Time
+	FirstResponseTime  time.Time
+	isFirstResponse    bool
+	PerformanceAttempt *RelayPerformanceAttempt
 	//SendLastReasoningResponse bool
 	IsStream               bool
 	IsGeminiBatchEmbedding bool
@@ -186,7 +207,8 @@ type RelayInfo struct {
 	// 若为空，调用 GetFinalRequestRelayFormat 会回退到 RequestConversionChain 的最后一项或 RelayFormat。
 	FinalRequestRelayFormat types.RelayFormat
 
-	StreamStatus *StreamStatus
+	StreamStatus        *StreamStatus
+	UpstreamDiagnostics *UpstreamDiagnostics
 
 	// convOptions caches the converter settings snapshot (see ConvOptions).
 	convOptions *convmeta.Options
@@ -205,6 +227,7 @@ type RelayInfo struct {
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
+	info.UpstreamDiagnostics = nil
 	info.FinalRequestRelayFormat = ""
 	info.RequestConversionChain = nil
 	info.InitRequestConversionChain()
@@ -900,8 +923,12 @@ func (info *RelayInfo) ConvOptions() *convmeta.Options {
 }
 
 func (info *RelayInfo) SetFirstResponseTime() {
+	now := time.Now()
+	if info.PerformanceAttempt != nil && info.PerformanceAttempt.FirstResponseTime.IsZero() {
+		info.PerformanceAttempt.FirstResponseTime = now
+	}
 	if info.isFirstResponse {
-		info.FirstResponseTime = time.Now()
+		info.FirstResponseTime = now
 		info.isFirstResponse = false
 	}
 }

@@ -19,6 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  'Referral reward settlement',
+  'User Token Usage Ranking',
+  'User Token Usage Trend',
   // Billing expression simulation diagnostics and conditional labels.
   '{{start}}–{{end}}',
 
@@ -720,6 +723,12 @@ export const STATIC_I18N_KEYS = [
   'Account unlinking',
   'Email confirmation code resend',
   // Model and vendor management labels.
+  'Email delivery',
+  'Manual credit',
+  'Enter an email subject.',
+  'Enter the email content.',
+  'The subject must be at most 160 characters.',
+  'The content must be at most 20,000 characters.',
   'Vendors',
   'Vendor management',
   'Vendor name and icon must not exceed 128 characters.',

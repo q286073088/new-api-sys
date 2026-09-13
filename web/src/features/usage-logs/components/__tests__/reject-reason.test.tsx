@@ -52,7 +52,12 @@ function makeLog(other: LogOtherData): UsageLog {
   }
 }
 
-function renderDetails(isAdmin: boolean): void {
+function renderDetails(
+  isAdmin: boolean,
+  other: LogOtherData = {
+    admin_info: { reject_reason: 'blocked by channel policy' },
+  }
+): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -63,11 +68,7 @@ function renderDetails(isAdmin: boolean): void {
   render(
     <QueryClientProvider client={queryClient}>
       <DetailsDialog
-        log={makeLog({
-          admin_info: {
-            reject_reason: 'blocked by channel policy',
-          },
-        })}
+        log={makeLog(other)}
         isAdmin={isAdmin}
         isRoot={false}
         open
@@ -97,5 +98,56 @@ describe('usage log reject reason', () => {
 
     expect(screen.queryByText('Reject Reason')).toBeNull()
     expect(screen.queryByText('blocked by channel policy')).toBeNull()
+  })
+})
+
+const canceledStream: LogOtherData = {
+  stream_status: { status: 'error', end_reason: 'client_gone' },
+  admin_info: {
+    request_diagnostics: {
+      client_context_error: 'context canceled',
+      client_user_agent: 'ExampleClient/1.0',
+      upstream_request_id: 'upstream-trace-123',
+      upstream_status: 200,
+      headers_elapsed_ms: 1250,
+      last_upstream_activity_ms: 30000,
+      received_events: 0,
+      downstream_written_bytes: 0,
+      relay_timeout_seconds: 0,
+      ping_enabled: false,
+    },
+  },
+}
+
+describe('administrator request diagnostics', () => {
+  test('shows cancellation evidence, zero traffic and an unlimited timeout to admins', () => {
+    renderDetails(true, canceledStream)
+    expect(screen.getByText('Request diagnostics')).toBeInTheDocument()
+    expect(screen.getByText('ExampleClient/1.0')).toBeInTheDocument()
+    expect(screen.getByText('upstream-trace-123')).toBeInTheDocument()
+    expect(screen.getByText('1250 ms')).toBeInTheDocument()
+    expect(screen.getByText('30000 ms')).toBeInTheDocument()
+    expect(
+      screen.getByText('Upstream events received').nextElementSibling
+    ).toHaveTextContent('0')
+    expect(
+      screen.getByText('Bytes sent to client').nextElementSibling
+    ).toHaveTextContent('0')
+    expect(
+      screen.getByText('Total upstream timeout').nextElementSibling
+    ).toHaveTextContent('Unlimited')
+  })
+
+  test('hides administrator connection details from users even if present in the supplied data', () => {
+    renderDetails(false, canceledStream)
+    expect(screen.queryByText('Request diagnostics')).not.toBeInTheDocument()
+    expect(screen.queryByText('upstream-trace-123')).not.toBeInTheDocument()
+    expect(screen.queryByText('ExampleClient/1.0')).not.toBeInTheDocument()
+  })
+
+  test('keeps older logs readable when no diagnostics were recorded', () => {
+    renderDetails(true)
+    expect(screen.queryByText('Request diagnostics')).not.toBeInTheDocument()
+    expect(screen.getByText('blocked by channel policy')).toBeInTheDocument()
   })
 })

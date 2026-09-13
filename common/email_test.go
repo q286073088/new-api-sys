@@ -30,6 +30,7 @@ type fakeSMTPServer struct {
 	messages          chan string
 	authCommands      chan string
 	startTLSCommands  chan string
+	failQuit          bool
 }
 
 func newFakeSMTPServer(t *testing.T) *fakeSMTPServer {
@@ -194,6 +195,9 @@ func (s *fakeSMTPServer) serve() {
 				return
 			}
 		case upperCommand == "QUIT":
+			if s.failQuit {
+				return
+			}
 			_ = writeSMTPLine(rw, "221 2.0.0 Bye")
 			return
 		default:
@@ -265,6 +269,18 @@ func withSMTPSettings(t *testing.T) {
 		SMTPToken = originalSMTPToken
 		SystemName = originalSystemName
 	})
+}
+
+func TestSendEmailTreatsAcceptedDataAsDeliveredWhenQuitFails(t *testing.T) {
+	server := newFakeSMTPServerWithSTARTTLSAdvertisement(t, false)
+	t.Cleanup(server.close)
+	server.failQuit = true
+	withSMTPSettings(t)
+	SMTPServer, SMTPPort, SMTPFrom = server.host, server.port, "sender@example.test"
+	SMTPAccount, SMTPToken = "", ""
+	SMTPSSLEnabled, SMTPStartTLSEnabled = false, false
+	require.NoError(t, SendEmail("Recharge succeeded", "buyer@example.test", "<p>Credited</p>"))
+	require.Contains(t, <-server.messages, "<p>Credited</p>")
 }
 
 func TestSendEmailUsesExplicitStartTLSWithInsecureCertificate(t *testing.T) {

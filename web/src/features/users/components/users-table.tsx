@@ -28,13 +28,16 @@ import {
   DataTablePage,
   useDataTable,
 } from '@/components/data-table'
+import { SectionPageLayout } from '@/components/layout'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { createServerError } from '@/lib/server-error-message'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { getUsers, searchUsers } from '../api'
 import {
   USER_STATUS,
+  USER_ROLE,
   getUserStatusOptions,
   getUserRoleOptions,
   isUserDeleted,
@@ -42,6 +45,7 @@ import {
 import type { User, UserSortBy } from '../types'
 import { DataTableBulkActions } from './data-table-bulk-actions'
 import { useUsersColumns } from './users-columns'
+import { UsersPrimaryButtons } from './users-primary-buttons'
 import { useUsers } from './users-provider'
 
 const route = getRouteApi('/_authenticated/users/')
@@ -61,6 +65,7 @@ function isDisabledUserRow(user: User) {
 
 export function UsersTable() {
   const { t } = useTranslation()
+  const viewer = useAuthStore((state) => state.auth.user)
   const columns = useUsersColumns()
   const { refreshTrigger } = useUsers()
   const isMobile = useMediaQuery('(max-width: 640px)')
@@ -173,7 +178,14 @@ export function UsersTable() {
   const { table } = useDataTable({
     data: users,
     columns,
-    enableRowSelection: true,
+    getRowId: (user) => String(user.id),
+    enableRowSelection: (row) =>
+      !isUserDeleted(row.original) &&
+      row.original.role !== USER_ROLE.ROOT &&
+      Boolean(
+        viewer &&
+        (viewer.role === USER_ROLE.ROOT || viewer.role > row.original.role)
+      ),
     columnFilters,
     globalFilter,
     pagination,
@@ -203,40 +215,52 @@ export function UsersTable() {
   })
 
   return (
-    <DataTablePage
-      table={table}
-      columns={columns}
-      isLoading={isLoading}
-      isFetching={isFetching}
-      emptyTitle={t('No Users Found')}
-      emptyDescription={t(
-        'No users available. Try adjusting your search or filters.'
-      )}
-      skeletonKeyPrefix='users-skeleton'
-      applyHeaderSize
-      toolbarProps={{
-        searchPlaceholder: t('Filter by username, name or email...'),
-        searchDebounceMs: 500,
-        filters: [
-          {
-            columnId: 'status',
-            title: t('Status'),
-            options: getUserStatusOptions(t),
-            singleSelect: true,
-          },
-          {
-            columnId: 'role',
-            title: t('Role'),
-            options: getUserRoleOptions(t),
-            singleSelect: true,
-          },
-        ],
-      }}
-      getRowClassName={(row, { isMobile }) => {
-        if (!isDisabledUserRow(row.original)) return undefined
-        return isMobile ? DISABLED_ROW_MOBILE : DISABLED_ROW_DESKTOP
-      }}
-      bulkActions={<DataTableBulkActions table={table} />}
-    />
+    <SectionPageLayout fixedContent>
+      <SectionPageLayout.Title>{t('Users')}</SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
+        <UsersPrimaryButtons
+          selectedUserIds={table
+            .getFilteredSelectedRowModel()
+            .rows.map((row) => row.original.id)}
+        />
+      </SectionPageLayout.Actions>
+      <SectionPageLayout.Content>
+        <DataTablePage
+          table={table}
+          columns={columns}
+          isLoading={isLoading}
+          isFetching={isFetching}
+          emptyTitle={t('No Users Found')}
+          emptyDescription={t(
+            'No users available. Try adjusting your search or filters.'
+          )}
+          skeletonKeyPrefix='users-skeleton'
+          applyHeaderSize
+          toolbarProps={{
+            searchPlaceholder: t('Filter by username, name or email...'),
+            searchDebounceMs: 500,
+            filters: [
+              {
+                columnId: 'status',
+                title: t('Status'),
+                options: getUserStatusOptions(t),
+                singleSelect: true,
+              },
+              {
+                columnId: 'role',
+                title: t('Role'),
+                options: getUserRoleOptions(t),
+                singleSelect: true,
+              },
+            ],
+          }}
+          getRowClassName={(row, { isMobile }) => {
+            if (!isDisabledUserRow(row.original)) return undefined
+            return isMobile ? DISABLED_ROW_MOBILE : DISABLED_ROW_DESKTOP
+          }}
+          bulkActions={<DataTableBulkActions table={table} />}
+        />
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
   )
 }

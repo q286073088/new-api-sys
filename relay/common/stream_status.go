@@ -28,10 +28,27 @@ type StreamErrorEntry struct {
 	Timestamp time.Time
 }
 
+// StreamDiagnostics is published after all stream workers have stopped.
+type StreamDiagnostics struct {
+	StartedAt           time.Time
+	EndedAt             time.Time
+	FirstDataAt         time.Time
+	LastReadAt          time.Time
+	ReceivedEvents      int
+	UpstreamStatus      int
+	UpstreamProtocol    string
+	UpstreamReadError   error
+	IdleTimeoutSeconds  int
+	WriteTimeoutSeconds int
+	PingEnabled         bool
+	PingIntervalSeconds int
+}
+
 type StreamStatus struct {
-	EndReason StreamEndReason
-	EndError  error
-	endOnce   sync.Once
+	EndReason   StreamEndReason
+	EndError    error
+	endOnce     sync.Once
+	Diagnostics *StreamDiagnostics
 
 	mu         sync.Mutex
 	Errors     []StreamErrorEntry

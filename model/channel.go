@@ -202,6 +202,16 @@ func (channel *Channel) GetKeys() []string {
 }
 
 func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
+	return channel.getNextKey(false)
+}
+
+// GetNextTestKey probes automatically disabled keys when the channel needs
+// recovery. Enabled channels still test usable keys; manual keys stay excluded.
+func (channel *Channel) GetNextTestKey() (string, int, *types.NewAPIError) {
+	return channel.getNextKey(channel.Status == common.ChannelStatusAutoDisabled)
+}
+
+func (channel *Channel) getNextKey(channelTest bool) (string, int, *types.NewAPIError) {
 	// If not in multi-key mode, return the original key string directly.
 	if !channel.ChannelInfo.IsMultiKey {
 		return channel.Key, 0, nil
@@ -233,7 +243,8 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 	// Collect indexes of enabled keys
 	enabledIdx := make([]int, 0, len(keys))
 	for i := range keys {
-		if getStatus(i) == common.ChannelStatusEnabled {
+		status := getStatus(i)
+		if status == common.ChannelStatusEnabled || (channelTest && status == common.ChannelStatusAutoDisabled) {
 			enabledIdx = append(enabledIdx, i)
 		}
 	}
@@ -244,7 +255,12 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 		return "", 0, types.NewError(errors.New("no enabled keys"), types.ErrorCodeChannelNoAvailableKey)
 	}
 
-	switch channel.ChannelInfo.MultiKeyMode {
+	mode := channel.ChannelInfo.MultiKeyMode
+	if channelTest {
+		// Rotate probes even when the relay uses random selection.
+		mode = constant.MultiKeyModePolling
+	}
+	switch mode {
 	case constant.MultiKeyModeRandom:
 		// Randomly pick one enabled key
 		selectedIdx := enabledIdx[rand.Intn(len(enabledIdx))]
@@ -273,9 +289,13 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 		}
 		for i := range keys {
 			idx := (start + i) % len(keys)
-			if getStatus(idx) == common.ChannelStatusEnabled {
+			status := getStatus(idx)
+			if status == common.ChannelStatusEnabled || (channelTest && status == common.ChannelStatusAutoDisabled) {
 				// update polling index for next call (point to the next position)
 				channel.ChannelInfo.MultiKeyPollingIndex = (idx + 1) % len(keys)
+				if channelTest && common.MemoryCacheEnabled {
+					channelInfo.MultiKeyPollingIndex = channel.ChannelInfo.MultiKeyPollingIndex
+				}
 				return keys[idx], idx, nil
 			}
 		}

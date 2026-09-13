@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -10,6 +11,84 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestClickHouseRetryLogVisibilityMigration(t *testing.T) {
+	if os.Getenv("TEST_CLICKHOUSE_DSN") == "" {
+		t.Skip("set TEST_CLICKHOUSE_DSN to an empty disposable ClickHouse database")
+	}
+	for _, upgrade := range []bool{false, true} {
+		t.Run(fmt.Sprintf("upgrade_%t", upgrade), func(t *testing.T) {
+			setupReferralDatabase(t, "sqlite", false)
+			db, kind, err := chooseDB("TEST_CLICKHOUSE_DSN", true)
+			require.NoError(t, err)
+			require.Equal(t, common.DatabaseTypeClickHouse, kind)
+			var tables []string
+			require.NoError(t, db.Raw("SHOW TABLES").Scan(&tables).Error)
+			require.Empty(t, tables, "ClickHouse tests require an empty disposable database")
+			previousLogDB := LOG_DB
+			LOG_DB = db
+			common.SetLogDatabaseType(kind)
+			initCol()
+			t.Setenv("LOG_SQL_CLICKHOUSE_TTL_DAYS", "0")
+			t.Cleanup(func() {
+				assert.NoError(t, db.Exec("DROP TABLE IF EXISTS logs").Error)
+				assert.NoError(t, db.Exec("DROP TABLE IF EXISTS audit_logs").Error)
+				sqlDB, err := db.DB()
+				if assert.NoError(t, err) {
+					assert.NoError(t, sqlDB.Close())
+				}
+				LOG_DB = previousLogDB
+				common.SetLogDatabaseType(common.DatabaseTypeSQLite)
+				initCol()
+			})
+			var version string
+			require.NoError(t, db.Raw("SELECT version()").Scan(&version).Error)
+			t.Logf("ClickHouse %s", version)
+			legacy := Log{UserId: 3, TokenId: 9, Type: LogTypeError, Content: "historical failure", CreatedAt: common.GetTimestamp(), RequestId: "historical-request"}
+			if upgrade {
+				// The released MergeTree schema has no user-visibility marker.
+				legacySchema := strings.Replace(clickHouseLogCreateTableSQL(0), "\thidden_for_user UInt8 DEFAULT 0,\n", "", 1)
+				require.NoError(t, db.Exec(legacySchema).Error)
+				require.NoError(t, db.Omit("HiddenForUser").Create(&legacy).Error)
+			}
+			for range 2 {
+				require.NoError(t, migrateLOGDB())
+			}
+			if !upgrade {
+				require.NoError(t, createLog(&legacy))
+			}
+			for _, entry := range []Log{
+				{UserId: 3, TokenId: 9, Type: LogTypeError, HiddenForUser: true, Content: "intermediate failure", RequestId: "retry-request"},
+				{UserId: 3, TokenId: 9, Type: LogTypeConsume, Quota: 12, Content: "final success", RequestId: "retry-request"},
+				{UserId: 4, TokenId: 10, Type: LogTypeError, Content: "another account", RequestId: "other-request"},
+			} {
+				entry.CreatedAt = common.GetTimestamp()
+				require.NoError(t, createLog(&entry))
+			}
+			for range 2 {
+				require.NoError(t, migrateLOGDB())
+			}
+			userLogs, total, err := GetUserLogs(3, LogTypeUnknown, 0, 0, "", "", 0, 1, "", "retry-request", "")
+			require.NoError(t, err)
+			assert.EqualValues(t, 1, total)
+			require.Len(t, userLogs, 1)
+			assert.Equal(t, "final success", userLogs[0].Content)
+			assert.Equal(t, 12, userLogs[0].Quota)
+			tokenLogs, err := GetLogByTokenId(9)
+			require.NoError(t, err)
+			require.Len(t, tokenLogs, 2)
+			assert.ElementsMatch(t, []string{"historical failure", "final success"}, []string{tokenLogs[0].Content, tokenLogs[1].Content})
+			adminLogs, total, err := GetAllLogs(LogTypeUnknown, 0, 0, "", "", "", 0, 10, 0, "", "retry-request", "")
+			require.NoError(t, err)
+			assert.EqualValues(t, 2, total)
+			assert.Len(t, adminLogs, 2)
+			var schema string
+			require.NoError(t, db.Raw("SHOW CREATE TABLE logs").Scan(&schema).Error)
+			assert.Contains(t, schema, "PARTITION BY toYYYYMM(toDateTime(created_at))")
+			assert.Contains(t, schema, "ORDER BY (created_at, request_id)")
+		})
+	}
+}
 
 func TestIsClickHouseDSN(t *testing.T) {
 	cases := []struct {

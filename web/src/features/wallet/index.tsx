@@ -28,6 +28,7 @@ import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
+import { ReferralDetailsDialog } from './components/dialogs/referral-details-dialog'
 import { TransferDialog } from './components/dialogs/transfer-dialog'
 import { RechargeFormCard } from './components/recharge-form-card'
 import { SubscriptionPlansCard } from './components/subscription-plans-card'
@@ -42,6 +43,7 @@ import {
   useWaffoPayment,
   useWaffoPancakePayment,
 } from './hooks'
+import { useReferralSummary } from './hooks/use-referral-summary'
 import {
   getDefaultPaymentType,
   getMinTopupAmount,
@@ -73,6 +75,8 @@ export function Wallet(props: WalletProps) {
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
+  const [referralDialogOpen, setReferralDialogOpen] = useState(false)
+  const referralSummary = useReferralSummary()
   const [billingDialogOpen, setBillingDialogOpen] = useState(false)
   const [redemptionCode, setRedemptionCode] = useState('')
   const [creemDialogOpen, setCreemDialogOpen] = useState(false)
@@ -343,6 +347,8 @@ export function Wallet(props: WalletProps) {
               user={user}
               affiliateLink={affiliateLink}
               onTransfer={() => setTransferDialogOpen(true)}
+              onViewDetails={() => setReferralDialogOpen(true)}
+              summary={referralSummary.data?.summary}
               complianceConfirmed={
                 topupInfo?.payment_compliance_confirmed !== false
               }
@@ -369,7 +375,9 @@ export function Wallet(props: WalletProps) {
         open={transferDialogOpen}
         onOpenChange={setTransferDialogOpen}
         onConfirm={handleTransfer}
-        availableQuota={user?.aff_quota ?? 0}
+        availableQuota={
+          referralSummary.data?.summary.available_quota ?? user?.aff_quota ?? 0
+        }
         transferring={transferring}
       />
 
@@ -377,6 +385,13 @@ export function Wallet(props: WalletProps) {
         open={billingDialogOpen}
         onOpenChange={setBillingDialogOpen}
       />
+
+      {referralDialogOpen && (
+        <ReferralDetailsDialog
+          open={referralDialogOpen}
+          onOpenChange={setReferralDialogOpen}
+        />
+      )}
 
       <CreemConfirmDialog
         open={creemDialogOpen}

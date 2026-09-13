@@ -51,16 +51,19 @@ let themeManagerPromise: Promise<
 const USER_CHARTS: {
   value: string
   labelKey: string
+  tokenLabelKey: string
   specKey: keyof ProcessedUserChartData
 }[] = [
   {
     value: 'rank',
     labelKey: 'User Consumption Ranking',
+    tokenLabelKey: 'User Token Usage Ranking',
     specKey: 'spec_user_rank',
   },
   {
     value: 'trend',
     labelKey: 'User Consumption Trend',
+    tokenLabelKey: 'User Token Usage Trend',
     specKey: 'spec_user_trend',
   },
 ]
@@ -151,14 +154,37 @@ export function UserCharts(props: UserChartsProps) {
         isLoading ? [] : (userData ?? []),
         timeGranularity,
         t,
-        topUserLimit
+        topUserLimit,
+        props.filters.metric
       ),
-    [userData, isLoading, timeGranularity, t, topUserLimit]
+    [
+      userData,
+      isLoading,
+      timeGranularity,
+      t,
+      topUserLimit,
+      props.filters.metric,
+    ]
   )
 
   return (
     <div className='space-y-3'>
       <div className='flex items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
+        <Tabs
+          value={props.filters.metric}
+          onValueChange={(value) =>
+            onFiltersChange({
+              ...props.filters,
+              metric: value as UserChartsFilters['metric'],
+            })
+          }
+          className='shrink-0'
+        >
+          <TabsList aria-label={t('Usage Metric')}>
+            <TabsTrigger value='quota'>{t('Amount')}</TabsTrigger>
+            <TabsTrigger value='tokens'>{t('Tokens')}</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <Tabs
           value={String(selectedRange)}
           onValueChange={(value) => handleRangeChange(Number(value))}
@@ -236,7 +262,13 @@ export function UserCharts(props: UserChartsProps) {
                 <IconBadge tone='info' size='sm'>
                   <Users />
                 </IconBadge>
-                <div className='text-sm font-semibold'>{t(chart.labelKey)}</div>
+                <div className='text-sm font-semibold'>
+                  {t(
+                    props.filters.metric === 'tokens'
+                      ? chart.tokenLabelKey
+                      : chart.labelKey
+                  )}
+                </div>
               </div>
 
               <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
@@ -246,7 +278,7 @@ export function UserCharts(props: UserChartsProps) {
                   themeReady &&
                   spec && (
                     <VChart
-                      key={`user-${chart.value}-${topUserLimit}-${resolvedTheme}`}
+                      key={`user-${chart.value}-${props.filters.metric}-${topUserLimit}-${resolvedTheme}`}
                       spec={{
                         ...spec,
                         theme: resolvedTheme === 'dark' ? 'dark' : 'light',

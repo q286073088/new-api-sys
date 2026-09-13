@@ -85,6 +85,8 @@ const TYPE_LABEL: Record<string, string> = {
   model_update: 'Batch upstream model update',
   midjourney_poll: 'Drawing task polling',
   async_task_poll: 'Async task polling',
+  referral_settlement: 'Referral reward settlement',
+  email_delivery: 'Email delivery',
 }
 
 const TYPE_DISPLAY_ID: Record<string, string> = {

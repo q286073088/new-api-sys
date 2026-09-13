@@ -82,6 +82,10 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 
 	// 无条件新建 StreamStatus
 	info.StreamStatus = relaycommon.NewStreamStatus()
+	streamStartedAt := time.Now()
+	var firstDataAt, lastReadAt time.Time
+	var upstreamReadError error
+	receivedBeforeStream := info.ReceivedResponseCount
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -248,6 +252,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			}
 
 			ticker.Reset(streamingTimeout)
+			lastReadAt = time.Now()
 			data := scanner.Text()
 			logger.LogDebug(c, "stream scanner data: %s", data)
 
@@ -263,6 +268,9 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 				continue
 			}
 			if !strings.HasPrefix(data, "[DONE]") {
+				if firstDataAt.IsZero() {
+					firstDataAt = lastReadAt
+				}
 				info.SetFirstResponseTime()
 				info.ReceivedResponseCount++
 
@@ -282,6 +290,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 
 		if err := scanner.Err(); err != nil {
 			if err != io.EOF {
+				// Closing the body during cleanup is a consequence of stopping,
+				// not evidence of a separate upstream failure.
+				if ctx.Err() == nil && c.Request.Context().Err() == nil {
+					upstreamReadError = err
+				}
 				logger.LogError(c, "scanner error: "+err.Error())
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, err)
 			}
@@ -301,7 +314,22 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
 	}
 
+	streamEndedAt := time.Now()
 	cleanup()
+	info.StreamStatus.Diagnostics = &relaycommon.StreamDiagnostics{
+		StartedAt:           streamStartedAt,
+		EndedAt:             streamEndedAt,
+		FirstDataAt:         firstDataAt,
+		LastReadAt:          lastReadAt,
+		ReceivedEvents:      info.ReceivedResponseCount - receivedBeforeStream,
+		UpstreamStatus:      resp.StatusCode,
+		UpstreamProtocol:    resp.Proto,
+		UpstreamReadError:   upstreamReadError,
+		IdleTimeoutSeconds:  int(streamingTimeout / time.Second),
+		WriteTimeoutSeconds: int(streamWriteTimeout / time.Second),
+		PingEnabled:         pingEnabled,
+		PingIntervalSeconds: int(pingInterval / time.Second),
+	}
 	if info.StreamStatus.IsNormalEnd() && !info.StreamStatus.HasErrors() {
 		logger.LogInfo(c, fmt.Sprintf("stream ended: %s", info.StreamStatus.Summary()))
 	} else {

@@ -65,6 +65,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
       cell: ({ row }) => (
         <Checkbox
           checked={row.getIsSelected()}
+          disabled={!row.getCanSelect()}
           onCheckedChange={(value) => row.toggleSelected(!!value)}
           aria-label={t('Select row')}
           className='translate-y-[2px]'
@@ -135,6 +136,18 @@ export function useUsersColumns(): ColumnDef<User>[] {
       enableHiding: false,
       size: 220,
       meta: { mobileTitle: true },
+    },
+    {
+      accessorKey: 'email',
+      header: t('Email'),
+      cell: ({ row }) => (
+        <LongText className='max-w-[240px] text-sm'>
+          {row.original.email || '—'}
+        </LongText>
+      ),
+      enableSorting: false,
+      size: 240,
+      meta: { mobileOrder: 25 },
     },
     {
       accessorKey: 'status',

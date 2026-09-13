@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -41,7 +42,28 @@ type RetryParam struct {
 	ModelName    string
 	RequestPath  string
 	Retry        *int
+	Attempt      int
+	retryLimit   *int
+	modelLimit   bool
 	resetNextTry bool
+}
+
+// GetRetryLimit freezes the original model's retry budget for this request.
+func (p *RetryParam) GetRetryLimit() int {
+	if p.retryLimit == nil {
+		limit, configured := operation_setting.GetModelRetryTimes(p.ModelName)
+		p.retryLimit, p.modelLimit = &limit, configured
+	}
+	return *p.retryLimit
+}
+
+func (p *RetryParam) GetRemainingRetries() int {
+	limit := p.GetRetryLimit()
+	if p.modelLimit {
+		return limit - p.Attempt
+	}
+	// Unconfigured models retain the existing per-group retry behavior.
+	return limit - p.GetRetry()
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -56,6 +78,7 @@ func (p *RetryParam) SetRetry(retry int) {
 }
 
 func (p *RetryParam) IncreaseRetry() {
+	p.Attempt++
 	if p.resetNextTry {
 		p.resetNextTry = false
 		return
@@ -165,12 +188,12 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 
 			// Prepare state for next retry
 			// 为下一次重试准备状态
-			if crossGroupRetry && priorityRetry >= common.RetryTimes {
+			if crossGroupRetry && priorityRetry >= param.GetRetryLimit() {
 				// Current group has exhausted all retries, prepare to switch to next group
 				// This request still uses current group, but next retry will use next group
 				// 当前分组已用完所有重试次数，准备切换到下一个分组
 				// 本次请求仍使用当前分组，但下次重试将使用下一个分组
-				logger.LogDebug(param.Ctx, "Current group %s retries exhausted (priorityRetry=%d >= RetryTimes=%d), preparing switch to next group for next retry", autoGroup, priorityRetry, common.RetryTimes)
+				logger.LogDebug(param.Ctx, "Current group %s retries exhausted (priorityRetry=%d >= RetryTimes=%d), preparing switch to next group for next retry", autoGroup, priorityRetry, param.GetRetryLimit())
 				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)
 				// Reset retry counter so outer loop can continue for next group
 				// 重置重试计数器，以便外层循环可以为下一个分组继续

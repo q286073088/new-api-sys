@@ -25,6 +25,7 @@ import { PaymentSettingsSection } from '../integrations/payment-settings-section
 import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { ReferralSettingsSection } from './referral-settings-section'
 
 const getModelDefaults = (settings: BillingSettings) => ({
   ModelPrice: settings.ModelPrice,
@@ -53,6 +54,19 @@ const getGroupDefaults = (settings: BillingSettings) => ({
 })
 
 const BILLING_SECTIONS = [
+  {
+    id: 'referrals',
+    titleKey: 'Referral Rebates',
+    build: (settings: BillingSettings) => (
+      <ReferralSettingsSection
+        defaultValue={settings.ReferralSetting}
+        complianceConfirmed={
+          settings['payment_setting.compliance_confirmed'] &&
+          settings['payment_setting.compliance_terms_version'] === 'v1'
+        }
+      />
+    ),
+  },
   {
     id: 'quota',
     titleKey: 'Quota Settings',

@@ -208,6 +208,7 @@ export interface UserChartsFilters {
   timeGranularity: TimeGranularity
   selectedRange: number
   topUserLimit: number
+  metric: 'quota' | 'tokens'
 }
 
 // ============================================================================

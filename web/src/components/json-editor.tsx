@@ -238,6 +238,7 @@ export function JsonEditor({
                 >
                   <Input
                     value={row.key}
+                    aria-label={resolvedKeyLabel}
                     onChange={(e) =>
                       handleRowChange(row.id, 'key', e.target.value)
                     }
@@ -246,6 +247,7 @@ export function JsonEditor({
                   />
                   <Input
                     value={row.value}
+                    aria-label={resolvedValueLabel}
                     onChange={(e) =>
                       handleRowChange(row.id, 'value', e.target.value)
                     }

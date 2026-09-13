@@ -87,6 +87,7 @@ import {
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
 import { PluginAuthorLink } from '../plugin-author-link'
 import { DetailRow, DetailSection } from './log-detail-layout'
+import { RequestDiagnosticsSection } from './request-diagnostics-section'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -1191,6 +1192,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 </pre>
               )}
           </DetailSection>
+        )}
+
+        {props.isAdmin && other?.admin_info?.request_diagnostics && (
+          <RequestDiagnosticsSection
+            diagnostics={other.admin_info.request_diagnostics}
+            endReason={other.stream_status?.end_reason}
+          />
         )}
 
         {/* Subscription billing details */}

@@ -4,12 +4,43 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestModelRetryLimitsValidateAndFreezePerRequest(t *testing.T) {
+	oldConfig, oldGlobal := operation_setting.ModelRetryTimesJSON(), common.RetryTimes
+	t.Cleanup(func() {
+		require.NoError(t, operation_setting.UpdateModelRetryTimes(oldConfig))
+		common.RetryTimes = oldGlobal
+	})
+	common.RetryTimes = 3
+	require.NoError(t, operation_setting.UpdateModelRetryTimes(`{"fast":2,"no-retry":0}`))
+	for _, tc := range []struct {
+		model string
+		want  int
+	}{{"fast", 2}, {"no-retry", 0}, {"unlisted", 3}} {
+		param := &RetryParam{ModelName: tc.model}
+		assert.Equal(t, tc.want, param.GetRetryLimit())
+	}
+	param := &RetryParam{ModelName: "fast"}
+	assert.Equal(t, 2, param.GetRetryLimit())
+	require.NoError(t, operation_setting.UpdateModelRetryTimes(`{"fast":1}`))
+	assert.Equal(t, 2, param.GetRetryLimit(), "an in-flight request retains its retry budget")
+	param.SetRetry(0)
+	param.ResetRetryNextTry()
+	param.IncreaseRetry()
+	assert.Equal(t, 1, param.Attempt, "switching groups must not reset total attempts")
+	for _, value := range []string{`null`, `[]`, `{"x":null}`, `{"x":-1}`, `{"x":11}`, `{"x":1.5}`, `{"x":"2"}`, `{" ":2}`} {
+		assert.Error(t, operation_setting.UpdateModelRetryTimes(value))
+	}
+	assert.Equal(t, 1, (&RetryParam{ModelName: "fast"}).GetRetryLimit())
+}
 
 func TestPinnedTaskPluginChannelTypesUsesPinnedGenerationIndex(t *testing.T) {
 	registry := jsplugin.NewRegistry()

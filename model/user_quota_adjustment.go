@@ -57,9 +57,28 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuo
 		if err != nil {
 			return ErrWalletQuotaLimitExceeded
 		}
-		// An unchanged override is a successful operation, including on MySQL
-		// configurations that count only changed rows in RowsAffected.
-		if after != user.Quota {
+		if mode == "add" {
+			orderKey, err := common.GenerateRandomCharsKey(32)
+			if err != nil {
+				return err
+			}
+			now := common.GetTimestamp()
+			// Administrator credits carry exact quota units, including fractional
+			// account amounts. No external cash payment is inferred.
+			topUp := TopUp{
+				UserId: user.Id, Amount: int64(value), TradeNo: "ADMIN_" + orderKey,
+				PaymentMethod: PaymentMethodAdmin, PaymentProvider: PaymentProviderAdmin,
+				CreateTime: now, CompleteTime: now, Status: common.TopUpStatusSuccess,
+				ReferralBaseQuota: &value,
+			}
+			if err := tx.Create(&topUp).Error; err != nil {
+				return err
+			}
+			if err := creditTopUpWithReferral(tx, &topUp, value, nil); err != nil {
+				return err
+			}
+		} else if after != user.Quota {
+			// An unchanged override succeeds even when MySQL counts changed rows.
 			result := tx.Model(&User{}).Where("id = ?", userID).Update("quota", after)
 			if result.Error != nil {
 				return result.Error

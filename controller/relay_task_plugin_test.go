@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -24,6 +25,26 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestTaskSubmissionRespectsModelRetryLimit(t *testing.T) {
+	oldConfig, oldRetry, oldLog := operation_setting.ModelRetryTimesJSON(), common.RetryTimes, constant.ErrorLogEnabled
+	t.Cleanup(func() {
+		require.NoError(t, operation_setting.UpdateModelRetryTimes(oldConfig))
+		common.RetryTimes, constant.ErrorLogEnabled = oldRetry, oldLog
+	})
+	common.RetryTimes, constant.ErrorLogEnabled = 5, false
+	for _, limit := range []int{0, 2, 3} {
+		require.NoError(t, operation_setting.UpdateModelRetryTimes(common.GetJsonString(map[string]int{"plugin-model": limit})))
+		info := taskSubmissionRelayInfo(nil)
+		attempts := 0
+		_, err := executeTaskSubmissionWith(taskSubmissionTestContext(), info, func(*gin.Context, *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
+			attempts++
+			return nil, &dto.TaskError{StatusCode: http.StatusInternalServerError, Error: errors.New("temporary upstream error")}
+		})
+		require.NotNil(t, err)
+		assert.Equal(t, limit+1, attempts)
+	}
+}
 
 type taskSubmissionTestBilling struct {
 	events    *[]string

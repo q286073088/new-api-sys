@@ -618,17 +618,20 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return errors.New("邀请额度不足！")
 	}
 
-	// 更新用户额度
-	user.AffQuota -= quota
-	user.Quota += quota
-
-	// 保存用户状态
-	if err := tx.Save(user).Error; err != nil {
+	// Reuse the wallet ceiling and update only balances; transferred rewards
+	// must never become a new paid top-up eligible for another rebate.
+	if err := creditTopUpQuota(tx, user.Id, quota, map[string]any{
+		"aff_quota": gorm.Expr("aff_quota - ?", quota),
+	}); err != nil {
 		return err
 	}
-
-	// 提交事务
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	user.AffQuota -= quota
+	user.Quota += quota
+	syncCreditUserQuotaCache(user.Id, quota, "referral transfer")
+	return nil
 }
 
 func (user *User) prepareForInsert(tx *gorm.DB) error {

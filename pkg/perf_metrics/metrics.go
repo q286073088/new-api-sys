@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
+	"github.com/bytedance/gopkg/util/gopool"
 )
 
 var hotBuckets sync.Map
@@ -25,24 +26,40 @@ func Init() {
 }
 
 func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens int64) {
-	if info == nil {
+	if info != nil && info.PerformanceAttempt != nil {
+		// The relay controller publishes only the final actual attempt. Billing
+		// supplies its token usage without publishing an intermediate sample.
+		info.PerformanceAttempt.OutputTokens = outputTokens
 		return
 	}
-	now := time.Now()
-	hasTtft := info.IsStream && info.HasSendResponse()
+	sample := CaptureRelaySample(info, success, outputTokens, time.Now())
+	gopool.Go(func() { Record(sample) })
+}
+
+// CaptureRelaySample freezes an attempt before retries can replace its channel,
+// group or timing. completedAt also excludes background publishing delays.
+func CaptureRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens int64, completedAt time.Time) Sample {
+	if info == nil {
+		return Sample{}
+	}
+	start, firstResponse := info.StartTime, info.FirstResponseTime
+	if attempt := info.PerformanceAttempt; attempt != nil {
+		start, firstResponse = attempt.StartedAt, attempt.FirstResponseTime
+	}
+	hasTtft := info.IsStream && firstResponse.After(start)
 	ttftMs := int64(0)
 	if hasTtft {
-		ttftMs = info.FirstResponseTime.Sub(info.StartTime).Milliseconds()
+		ttftMs = firstResponse.Sub(start).Milliseconds()
 	}
-	latencyMs := now.Sub(info.StartTime).Milliseconds()
+	latencyMs := completedAt.Sub(start).Milliseconds()
 	generationMs := latencyMs
 	if hasTtft {
-		generationMs = now.Sub(info.FirstResponseTime).Milliseconds()
+		generationMs = completedAt.Sub(firstResponse).Milliseconds()
 	}
 	if generationMs <= 0 {
 		generationMs = latencyMs
 	}
-	Record(Sample{
+	return Sample{
 		Model:        info.OriginModelName,
 		Group:        info.UsingGroup,
 		LatencyMs:    latencyMs,
@@ -51,7 +68,7 @@ func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens i
 		Success:      success,
 		OutputTokens: outputTokens,
 		GenerationMs: generationMs,
-	})
+	}
 }
 
 func Record(sample Sample) {

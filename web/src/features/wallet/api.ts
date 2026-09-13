@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+import { requireServerSuccess } from '@/lib/server-error-message'
 
 import type {
   RedemptionRequest,
@@ -39,7 +40,41 @@ import type {
   WaffoPaymentResponse,
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
+  ReferralOverview,
+  ReferralInvitee,
+  ReferralReward,
+  ReferralPage,
 } from './types'
+
+export async function getReferralSummary(): Promise<ReferralOverview> {
+  const response = await api.get<{ success: boolean; data: ReferralOverview }>(
+    '/api/user/referrals/summary'
+  )
+  return requireServerSuccess(response.data).data
+}
+
+export async function getReferralInvitees(params: {
+  p: number
+  page_size: number
+  parent_id?: number
+}): Promise<ReferralPage<ReferralInvitee>> {
+  const response = await api.get<{
+    success: boolean
+    data: ReferralPage<ReferralInvitee>
+  }>('/api/user/referrals', { params })
+  return requireServerSuccess(response.data).data
+}
+
+export async function getReferralRewards(params: {
+  p: number
+  page_size: number
+}): Promise<ReferralPage<ReferralReward>> {
+  const response = await api.get<{
+    success: boolean
+    data: ReferralPage<ReferralReward>
+  }>('/api/user/referrals/rewards', { params })
+  return requireServerSuccess(response.data).data
+}
 
 // ============================================================================
 // Wallet API Functions

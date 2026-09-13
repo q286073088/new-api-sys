@@ -7,9 +7,12 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -129,6 +132,86 @@ func setupBillingAliasOptionDB(t *testing.T) {
 		common.RedisEnabled = previousRedis
 		model.InitChannelCache()
 	})
+}
+
+func TestUpdateReferralSettingValidationAndPersistence(t *testing.T) {
+	setupBillingAliasOptionDB(t)
+	require.NoError(t, i18n.Init())
+	original := setting.GetReferralSetting()
+	originalPayment := *operation_setting.GetPaymentSetting()
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateReferralSetting(common.GetJsonString(original)))
+		*operation_setting.GetPaymentSetting() = originalPayment
+	})
+	for _, test := range []struct {
+		name      string
+		confirmed bool
+		value     string
+		success   bool
+	}{
+		{"requires_existing_payment_terms", false, `{"enabled":true,"level1_percent":5,"level2_percent":2,"delay_days":3}`, false},
+		{"rejects_excessive_combined_rate", true, `{"enabled":true,"level1_percent":90,"level2_percent":20,"delay_days":3}`, false},
+		{"rejects_null", true, `null`, false},
+		{"saves_one_atomic_config", true, `{"enabled":true,"level1_percent":5,"level2_percent":2,"delay_days":3}`, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			operation_setting.GetPaymentSetting().ComplianceConfirmed = test.confirmed
+			operation_setting.GetPaymentSetting().ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
+			before := setting.GetReferralSetting()
+			body, err := common.Marshal(OptionUpdateRequest{Key: setting.ReferralSettingKey, Value: test.value})
+			require.NoError(t, err)
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Request = httptest.NewRequest(http.MethodPut, "/api/option/", strings.NewReader(string(body)))
+			UpdateOption(ctx)
+			var response struct {
+				Success bool `json:"success"`
+			}
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+			assert.Equal(t, test.success, response.Success)
+			if !test.success {
+				assert.Equal(t, before, setting.GetReferralSetting())
+				return
+			}
+			var saved model.Option
+			require.NoError(t, model.DB.Where(&model.Option{Key: setting.ReferralSettingKey}).First(&saved).Error)
+			assert.JSONEq(t, test.value, saved.Value)
+			assert.Equal(t, 3, setting.GetReferralSetting().DelayDays)
+		})
+	}
+}
+
+func TestUpdateModelRetrySettingValidationAndPersistence(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	oldConfig, oldMap := operation_setting.ModelRetryTimesJSON(), common.OptionMap
+	common.OptionMap = map[string]string{}
+	t.Cleanup(func() {
+		require.NoError(t, operation_setting.UpdateModelRetryTimes(oldConfig))
+		common.OptionMap = oldMap
+	})
+	for _, tc := range []struct {
+		value, stored string
+		success       bool
+	}{
+		{`{"configured-model":2}`, `{"configured-model":2}`, true},
+		{`{"configured-model":2.5}`, `{"configured-model":2}`, false},
+		{`{"configured-model":0}`, `{"configured-model":0}`, true},
+		{`{}`, `{}`, true},
+	} {
+		body := common.GetJsonString(OptionUpdateRequest{Key: "ModelRetryTimes", Value: tc.value})
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = httptest.NewRequest(http.MethodPut, "/api/option/", strings.NewReader(body))
+		UpdateOption(ctx)
+		var response struct{ Success bool }
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+		assert.Equal(t, tc.success, response.Success, recorder.Body.String())
+		var saved model.Option
+		require.NoError(t, db.Where(&model.Option{Key: "ModelRetryTimes"}).First(&saved).Error)
+		assert.JSONEq(t, tc.stored, saved.Value)
+		assert.JSONEq(t, tc.stored, operation_setting.ModelRetryTimesJSON())
+	}
 }
 
 func TestUpdateOptionAliasBillingExprUsesPluginSchema(t *testing.T) {

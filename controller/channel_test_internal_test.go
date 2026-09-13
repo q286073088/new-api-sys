@@ -3,7 +3,9 @@ package controller
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -15,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -22,6 +25,80 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestChannelFailureKeywordMatching(t *testing.T) {
+	oldEnabled, oldKeywords := common.AutomaticDisableChannelEnabled, operation_setting.AutomaticDisableKeywordsToString()
+	common.AutomaticDisableChannelEnabled = true
+	operation_setting.AutomaticDisableKeywordsFromString(" Insufficient CREDIT\r\n余额不足\n\n")
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = oldEnabled
+		operation_setting.AutomaticDisableKeywordsFromString(oldKeywords)
+	})
+	for _, tc := range []struct {
+		message         string
+		skipRetry, want bool
+	}{
+		{"upstream: insufficient credit for this call", false, true},
+		{"供应商账号余额不足，请充值", false, true},
+		{"INSUFFICIENT CREDIT", true, true},
+		{"invalid prompt", false, false},
+	} {
+		err := relaytypes.NewOpenAIError(errors.New(tc.message), relaytypes.ErrorCodeBadResponseStatusCode, http.StatusBadRequest)
+		if tc.skipRetry {
+			err = relaytypes.NewOpenAIError(errors.New(tc.message), relaytypes.ErrorCodeBadResponseStatusCode, http.StatusBadRequest, relaytypes.ErrOptionWithSkipRetry())
+		}
+		assert.Equal(t, tc.want, service.ShouldDisableChannel(err), tc.message)
+	}
+	common.AutomaticDisableChannelEnabled = false
+	assert.False(t, service.ShouldDisableChannel(relaytypes.NewOpenAIError(errors.New("余额不足"), relaytypes.ErrorCodeBadResponseStatusCode, http.StatusBadRequest)))
+}
+
+func TestPassiveChannelRecoveryEnablesHealthyChannel(t *testing.T) {
+	for _, multiKey := range []bool{false, true} {
+		t.Run(fmt.Sprintf("multi_key_%t", multiKey), func(t *testing.T) {
+			initModelListColumnNames(t)
+			db := setupManageUserTestDB(t)
+			require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}))
+			withTieredBillingConfig(t, map[string]string{"gpt-4o-mini": "tiered_expr"}, map[string]string{"gpt-4o-mini": "p + c"})
+			oldEnable, oldDisable, oldMemory := common.AutomaticEnableChannelEnabled, common.AutomaticDisableChannelEnabled, common.MemoryCacheEnabled
+			common.AutomaticEnableChannelEnabled, common.AutomaticDisableChannelEnabled, common.MemoryCacheEnabled = true, false, false
+			t.Cleanup(func() {
+				common.AutomaticEnableChannelEnabled, common.AutomaticDisableChannelEnabled, common.MemoryCacheEnabled = oldEnable, oldDisable, oldMemory
+			})
+			root := model.User{Username: "recovery-root", Role: common.RoleRootUser, Status: common.UserStatusEnabled, Group: "default"}
+			require.NoError(t, db.Create(&root).Error)
+			var requests atomic.Int32
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				assert.Equal(t, "Bearer recovery-key", r.Header.Get("Authorization"))
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"id":"health-check","object":"chat.completion","model":"gpt-4o-mini","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+			}))
+			t.Cleanup(upstream.Close)
+			channel := &model.Channel{Name: "recoverable", Type: constant.ChannelTypeOpenAI, Key: "recovery-key", BaseURL: common.GetPointer(upstream.URL), Models: "gpt-4o-mini", Group: "default", Status: common.ChannelStatusAutoDisabled}
+			if multiKey {
+				channel.Key += "\nmanual-key"
+				channel.ChannelInfo = model.ChannelInfo{IsMultiKey: true, MultiKeySize: 2, MultiKeyStatusList: map[int]int{0: common.ChannelStatusAutoDisabled, 1: common.ChannelStatusManuallyDisabled}}
+			}
+			require.NoError(t, db.Create(channel).Error)
+			require.NoError(t, db.Create(&model.Ability{ChannelId: channel.Id, Group: "default", Model: "gpt-4o-mini", Enabled: false}).Error)
+
+			summary := testChannelForHealthCheck(context.Background(), channel, root.Id, false, 60000)
+
+			assert.Equal(t, channelTestSummary{Tested: 1, Succeeded: 1, Enabled: 1}, summary)
+			assert.EqualValues(t, 1, requests.Load())
+			require.NoError(t, db.First(channel, channel.Id).Error)
+			assert.Equal(t, common.ChannelStatusEnabled, channel.Status)
+			if multiKey {
+				assert.NotContains(t, channel.ChannelInfo.MultiKeyStatusList, 0)
+				assert.Equal(t, common.ChannelStatusManuallyDisabled, channel.ChannelInfo.MultiKeyStatusList[1])
+			}
+			var ability model.Ability
+			require.NoError(t, db.First(&ability).Error)
+			assert.True(t, ability.Enabled)
+		})
+	}
+}
 
 func TestValidateChannelProxy(t *testing.T) {
 	tests := []struct {

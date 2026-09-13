@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -78,6 +79,40 @@ type Log struct {
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
 	Other             string `json:"other"`
+	HiddenForUser     bool   `json:"-" gorm:"default:false"`
+}
+
+type pendingRelayErrorLog struct {
+	mu  sync.Mutex
+	log *Log
+}
+
+// BeginRelayErrorLogs holds only the most recent failure until the next
+// outcome is known. A failed channel selection must not hide the last error.
+func BeginRelayErrorLogs(c *gin.Context) {
+	c.Set("pending_relay_error_log", &pendingRelayErrorLog{})
+}
+
+func (pending *pendingRelayErrorLog) flush(hidden bool) {
+	if pending.log == nil {
+		return
+	}
+	pending.log.HiddenForUser = hidden
+	if err := createLog(pending.log); err != nil {
+		common.SysError("failed to record relay error log: " + err.Error())
+	}
+	pending.log = nil
+}
+
+func FlushRelayErrorLogs(c *gin.Context, succeeded bool) {
+	value, exists := c.Get("pending_relay_error_log")
+	if !exists {
+		return
+	}
+	pending := value.(*pendingRelayErrorLog)
+	pending.mu.Lock()
+	defer pending.mu.Unlock()
+	pending.flush(succeeded)
 }
 
 // don't use iota, avoid change log type value
@@ -142,7 +177,7 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("")
 	}
-	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
+	err = LOG_DB.Model(&Log{}).Where("token_id = ? AND (hidden_for_user = ? OR hidden_for_user IS NULL)", tokenId, false).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
 	return logs, err
 }
@@ -315,6 +350,14 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 		UpstreamRequestId: upstreamRequestId,
 		Other:             otherStr,
 	}
+	if value, exists := c.Get("pending_relay_error_log"); exists {
+		pending := value.(*pendingRelayErrorLog)
+		pending.mu.Lock()
+		defer pending.mu.Unlock()
+		pending.flush(true)
+		pending.log = log
+		return
+	}
 	err := createLog(log)
 	if err != nil {
 		logger.LogError(c, "failed to record log: "+err.Error())
@@ -337,6 +380,7 @@ type RecordConsumeLogParams struct {
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
+	FlushRelayErrorLogs(c, true)
 	if !common.LogConsumeEnabled {
 		return
 	}
@@ -564,6 +608,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	} else {
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
+	tx = tx.Where("logs.hidden_for_user = ? OR logs.hidden_for_user IS NULL", false)
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
 		return nil, 0, err

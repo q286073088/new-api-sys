@@ -1,11 +1,20 @@
 package controller
 
 import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/stripe/stripe-go/v81"
+	"github.com/stripe/stripe-go/v81/webhook"
 )
 
 func confirmPaymentComplianceForTest(t *testing.T) {
@@ -42,6 +51,78 @@ func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 
 	setting.StripePriceId = ""
 	require.False(t, isStripeWebhookEnabled())
+}
+
+func TestStripeWebhookRetriesFailedReferralTransactionWithoutDuplicateCredit(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.TopUp{}, &model.ReferralReward{}, &model.SubscriptionOrder{}))
+	originalSecret, originalWebhook, originalPrice := setting.StripeApiSecret, setting.StripeWebhookSecret, setting.StripePriceId
+	originalUnit, originalReferral := common.QuotaPerUnit, setting.GetReferralSetting()
+	t.Cleanup(func() {
+		setting.StripeApiSecret, setting.StripeWebhookSecret, setting.StripePriceId = originalSecret, originalWebhook, originalPrice
+		common.QuotaPerUnit = originalUnit
+		require.NoError(t, setting.UpdateReferralSetting(common.GetJsonString(originalReferral)))
+	})
+	setting.StripeApiSecret, setting.StripeWebhookSecret, setting.StripePriceId = "sk_test_referral", "whsec_referral_test", "price_referral"
+	common.QuotaPerUnit = 1000
+	require.NoError(t, setting.UpdateReferralSetting(`{"enabled":true,"level1_percent":5,"level2_percent":2,"delay_days":3}`))
+	for _, user := range []model.User{
+		{Id: 1, Username: "grandparent", AffCode: "grandparent"},
+		{Id: 2, Username: "parent", AffCode: "parent", InviterId: 1},
+		{Id: 3, Username: "buyer", AffCode: "buyer", InviterId: 2},
+	} {
+		require.NoError(t, db.Create(&user).Error)
+	}
+	order := model.TopUp{UserId: 3, Amount: 100, Money: 100, TradeNo: "stripe-referral-retry",
+		PaymentProvider: model.PaymentProviderStripe, PaymentMethod: model.PaymentMethodStripe, Status: common.TopUpStatusPending}
+	require.NoError(t, order.Insert())
+	require.NoError(t, db.Migrator().DropTable(&model.ReferralReward{}))
+	for i, eventType := range []stripe.EventType{
+		stripe.EventTypeCheckoutSessionCompleted,
+		stripe.EventTypeCheckoutSessionCompleted,
+		stripe.EventTypeCheckoutSessionCompleted,
+		stripe.EventTypeCheckoutSessionAsyncPaymentSucceeded,
+	} {
+		if i == 1 {
+			require.NoError(t, db.AutoMigrate(&model.ReferralReward{}))
+		}
+		payload, err := common.Marshal(map[string]any{
+			"object": "event", "type": eventType,
+			"data": map[string]any{"object": map[string]any{
+				"client_reference_id": order.TradeNo, "customer": "cus_referral",
+				"status": "complete", "payment_status": "paid", "currency": "usd",
+				"amount_total": 9000, "amount_subtotal": 10000,
+			}},
+		})
+		require.NoError(t, err)
+		signed := webhook.GenerateTestSignedPayload(&webhook.UnsignedPayload{Payload: payload, Secret: setting.StripeWebhookSecret})
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/api/stripe/webhook", bytes.NewReader(payload))
+		ctx.Request.Header.Set("Stripe-Signature", signed.Header)
+		StripeWebhook(ctx)
+		var buyer model.User
+		require.NoError(t, db.First(&buyer, 3).Error)
+		require.NoError(t, db.First(&order, order.Id).Error)
+		if i == 0 {
+			assert.Equal(t, http.StatusInternalServerError, recorder.Code, "Stripe must retry when the rebate transaction rolls back")
+			assert.Zero(t, buyer.Quota)
+			assert.Equal(t, common.TopUpStatusPending, order.Status)
+			continue
+		}
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, 100000, buyer.Quota)
+		assert.Equal(t, common.TopUpStatusSuccess, order.Status)
+		var rewards []model.ReferralReward
+		require.NoError(t, db.Order("level").Find(&rewards).Error)
+		require.Len(t, rewards, 2)
+		assert.Equal(t, 4500, rewards[0].Quota)
+		assert.Equal(t, 1800, rewards[1].Quota)
+		var logs int64
+		require.NoError(t, model.LOG_DB.Model(&model.Log{}).Where("type = ?", model.LogTypeTopup).Count(&logs).Error)
+		assert.EqualValues(t, 1, logs)
+	}
 }
 
 func TestCreemWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {

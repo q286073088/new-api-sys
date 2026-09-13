@@ -529,7 +529,25 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	}
 
+	diagnostics := &common.UpstreamDiagnostics{
+		StartedAt: time.Now(),
+		Host:      req.URL.Host,
+		Timeout:   relayClient.Timeout,
+	}
+	info.UpstreamDiagnostics = diagnostics
 	resp, err := relayClient.Do(req)
+	diagnostics.CompletedAt = time.Now()
+	diagnostics.Err = err
+	if resp != nil {
+		diagnostics.StatusCode = resp.StatusCode
+		diagnostics.Protocol = resp.Proto
+		for _, header := range []string{common2.RequestIdKey, "X-Request-Id", "Request-Id", "X-Amzn-Requestid"} {
+			if requestID := resp.Header.Get(header); requestID != "" {
+				diagnostics.RequestID = requestID
+				break
+			}
+		}
+	}
 	if err != nil {
 		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
