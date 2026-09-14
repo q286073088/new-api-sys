@@ -86,28 +86,59 @@ function AccountAnnouncements(props: Props & { userId: number }) {
       ])
     },
   })
-  const items = useMemo<Announcement[]>(() => {
-    const announcements: Announcement[] = props.announcements
-      .filter((item) => typeof item.content === 'string' && item.content.trim())
-      .map((item) => ({
-        key: getAnnouncementKey(item),
-        content: String(item.content),
-        publishDate:
-          typeof item.publishDate === 'string' ? item.publishDate : undefined,
-        extra: typeof item.extra === 'string' ? item.extra : undefined,
-      }))
-    if (props.notice) {
-      announcements.unshift({
-        key: `notice:${getAnnouncementKey({ content: props.notice })}`,
-        content: props.notice,
-        notice: true,
-      })
+  const latest = useMemo<Announcement | null>(() => {
+    let selected: Record<string, unknown> | undefined
+    let latestTime = Number.NEGATIVE_INFINITY
+    let latestId = Number.NEGATIVE_INFINITY
+    for (const item of props.announcements) {
+      if (typeof item.content !== 'string' || !item.content.trim()) continue
+      const timestamp = Date.parse(String(item.publishDate ?? ''))
+      const publishedAt = Number.isFinite(timestamp)
+        ? timestamp
+        : Number.NEGATIVE_INFINITY
+      const numericId = Number(item.id)
+      const id = Number.isFinite(numericId)
+        ? numericId
+        : Number.NEGATIVE_INFINITY
+      if (
+        selected &&
+        (publishedAt < latestTime ||
+          (publishedAt === latestTime && id <= latestId))
+      ) {
+        continue
+      }
+      selected = item
+      latestTime = publishedAt
+      latestId = id
     }
-    return announcements
+    if (selected) {
+      return {
+        key: getAnnouncementKey(selected),
+        content: String(selected.content),
+        publishDate:
+          typeof selected.publishDate === 'string'
+            ? selected.publishDate
+            : undefined,
+        extra: typeof selected.extra === 'string' ? selected.extra : undefined,
+      }
+    }
+    const notice = props.notice.trim()
+    if (notice) {
+      return {
+        key: `notice:${getAnnouncementKey({ content: notice })}`,
+        content: notice,
+        notice: true,
+      }
+    }
+    return null
   }, [props.announcements, props.notice])
-  const next = items.find(
-    (item) => !shown.current.has(item.key) && !views.data?.includes(item.key)
-  )
+  // Read status must not turn an older announcement into the next popup.
+  const next =
+    latest &&
+    !shown.current.has(latest.key) &&
+    !views.data?.includes(latest.key)
+      ? latest
+      : null
   const { mutate } = markViewed
   useEffect(() => {
     if (props.loading || !views.isSuccess || current || !next) return

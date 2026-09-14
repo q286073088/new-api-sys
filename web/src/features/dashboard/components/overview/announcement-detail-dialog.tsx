@@ -16,10 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Megaphone } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
 import { RichContent } from '@/components/rich-content'
+import { Button } from '@/components/ui/button'
+import { IconBadge } from '@/components/ui/icon-badge'
+import { Separator } from '@/components/ui/separator'
 import { formatDateTimeObject } from '@/lib/time'
 
 interface AnnouncementDetailModalProps {
@@ -34,39 +38,66 @@ interface AnnouncementDetailModalProps {
   } | null
 }
 
-export function AnnouncementDetailModal({
-  open,
-  onOpenChange,
-  announcement,
-}: AnnouncementDetailModalProps) {
+export function AnnouncementDetailModal(props: AnnouncementDetailModalProps) {
   const { t } = useTranslation()
+  const publishDate = props.announcement?.publishDate
+  const publishedAt = publishDate ? new Date(publishDate) : null
   return (
     <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={t('Announcement Details')}
-      headerClassName='sr-only'
-      contentClassName='sm:max-w-lg'
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      title={
+        <>
+          <IconBadge tone='primary' size='sm' className='rounded-sm'>
+            <Megaphone />
+          </IconBadge>
+          {t('System Announcements')}
+        </>
+      }
+      titleClassName='flex items-center gap-2.5 font-semibold'
+      headerClassName='border-b pb-4 pr-8'
+      contentClassName='rounded-none border shadow-xl ring-0 sm:max-w-xl'
       contentHeight='auto'
-      bodyClassName='space-y-4 pr-6'
+      bodyClassName='space-y-5 py-1'
+      footerClassName='flex-row items-center justify-between gap-4 rounded-none sm:justify-between'
+      footer={
+        <>
+          <div className='text-muted-foreground min-w-0 flex-1 text-xs leading-5'>
+            {publishedAt && Number.isFinite(publishedAt.getTime()) && (
+              <p>
+                {t('Published:')}{' '}
+                <time dateTime={publishDate}>
+                  {formatDateTimeObject(publishedAt)}
+                </time>
+              </p>
+            )}
+          </div>
+          <Button
+            type='button'
+            className='min-w-24 shrink-0 rounded-sm'
+            onClick={() => props.onOpenChange(false)}
+          >
+            {t('Got it')}
+          </Button>
+        </>
+      }
     >
-      {announcement?.content && (
-        <RichContent breaks content={announcement.content} />
-      )}
-      {announcement?.extra && (
+      {props.announcement?.content && (
         <RichContent
           breaks
-          content={announcement.extra}
-          className='text-muted-foreground border-t pt-4'
+          content={props.announcement.content}
+          className='text-sm leading-7 break-words'
         />
       )}
-      {announcement?.publishDate && (
-        <p className='text-muted-foreground text-xs'>
-          {t('Published:')}{' '}
-          <time dateTime={announcement.publishDate}>
-            {formatDateTimeObject(new Date(announcement.publishDate))}
-          </time>
-        </p>
+      {props.announcement?.extra && (
+        <div className='space-y-4'>
+          <Separator />
+          <RichContent
+            breaks
+            content={props.announcement.extra}
+            className='text-muted-foreground text-sm break-words'
+          />
+        </div>
       )}
     </Dialog>
   )
