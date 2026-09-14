@@ -139,3 +139,28 @@ bun run build
 前端 `bun run typecheck`、四个修改文件的 oxlint 和保留原版权头的 oxfmt 检查通过；`bun run test src/features/wallet` 共 4 个文件、10 项测试通过，覆盖手动增加余额的账单金额、支付方式和加载/空状态。
 
 `./relay/channel` 整包中的既有 `TestUpstreamGetBody_HTTP2CannotRetryWithoutGetBody` 在 Windows 下仍有连接重置导致的失败，单独运行通过；在未修改的 **bdef11750** 独立工作区执行 `go test ./relay/channel -count=1` 复现了相同失败。因此本轮不宣称该整包全部通过，失败输出和专项结果保存在 `.local-tests/settlement-final-attempt/`。
+
+## 2026-09-14 模型广场展示首 Token 延迟最低的分组
+
+模型列表卡片的延迟和吞吐改为取最近 24 小时平均首 Token 延迟最低的有效分组，两项数据始终来自同一组。按各组的首 Token 样本数计算平均值，先合并数据库和内存中的统计，再选择分组；平均值相同时按分组名固定排序。缺少有效首 Token 延迟的分组不参与选择；所有分组都缺少数据时显示占位符。所选分组没有吞吐数据时也显示占位符，不借用其他分组的数据。
+
+例如 `codex` 为 24.31s / 32.5 t/s、`codex-hb` 为 35.77s / 70.4 t/s、`default` 为 10.50s / 44.5 t/s，列表卡片显示 **10.50s / 44.5 t/s**。延迟提示复用已有的“平均首 Token 延迟”译文。吞吐保持与分组明细相同的原始精度，由共享格式函数显示，避免多次舍入造成差异。
+
+卡片成功率和状态条仍采用原有全分组汇总。接口 `/api/perf-metrics/summary` 新增可选的 `best_group`，保留原有汇总字段，其他看板和分组明细统计口径保持原样。仍使用一次批量查询，不为每张模型卡片单独请求接口。此次只修改主库已有 `perf_metrics` 的聚合查询，没有表结构、迁移或日志库变更。
+
+验证环境为 SQLite **3.50.4**、MySQL **8.0.45**、PostgreSQL **16.13**。以下专项验证通过，覆盖数据库、内存、混合数据源、不同时间桶的加权均值、过期和已移除分组过滤、无首 Token 数据、并列值、吞吐精度，以及原有汇总成功率和状态条保持不变：
+
+```powershell
+# TEST_MYSQL_DSN、TEST_POSTGRES_DSN 指向专用空测试数据库
+go test ./pkg/perf_metrics -count=1 -v
+go test ./controller -run '^TestHTTPRelayRespectsModelRetryLimitsAndFinalLog$' -count=1
+go build ./...
+
+# web 目录
+bun run typecheck
+bun run test src/features/pricing/__tests__/model-cards.test.tsx
+bun run i18n:sync
+bun run build
+```
+
+前端共 **25 项测试**通过，四个修改的 TypeScript 文件通过 oxlint 和保留版权头的 oxfmt 检查。继续复用 `ModelCardGrid`、`ModelPerfBadge` 及共享格式函数，没有新增通用 UI 组件。验证日志位于忽略目录 `.local-tests/best-group-performance/`。

@@ -63,7 +63,12 @@ export function ModelCardGrid(props: ModelCardGridProps) {
   const perfMap = useMemo(() => {
     const map = new Map<string, ModelPerfBadgeData>()
     for (const model of perfQuery.data?.data?.models ?? []) {
-      map.set(model.model_name, model)
+      map.set(model.model_name, {
+        avg_ttft_ms: model.best_group?.avg_ttft_ms ?? 0,
+        avg_tps: model.best_group?.avg_tps ?? 0,
+        success_rate: model.success_rate,
+        recent_success_series: model.recent_success_series,
+      })
     }
     return map
   }, [perfQuery.data])

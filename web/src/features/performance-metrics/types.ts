@@ -50,6 +50,7 @@ export type PerfModelSummary = {
   avg_latency_ms: number
   success_rate: number
   avg_tps: number
+  best_group?: Pick<PerformanceGroup, 'group' | 'avg_ttft_ms' | 'avg_tps'>
   recent_success_series?: SuccessRatePoint[]
   request_count?: number
 }

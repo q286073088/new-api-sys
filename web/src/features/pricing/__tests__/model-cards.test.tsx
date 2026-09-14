@@ -227,7 +227,7 @@ describe('model cards', () => {
         <ModelCard
           model={pricingModel()}
           onClick={vi.fn()}
-          perf={{ avg_latency_ms: 1200, avg_tps: 42, success_rate }}
+          perf={{ avg_ttft_ms: 1200, avg_tps: 42, success_rate }}
         />
       )
       const metrics = screen.getByLabelText(
@@ -418,6 +418,66 @@ describe('model cards', () => {
     expect(onModelClick).toHaveBeenCalledWith('example-model')
   })
 
+  it('shows the fastest group TTFT and its throughput while retaining aggregate success', () => {
+    queryClient.setQueryData(['perf-metrics-summary', 24], {
+      success: true,
+      data: {
+        models: [
+          {
+            model_name: 'example-model',
+            avg_latency_ms: 48_786,
+            avg_tps: 49.13,
+            success_rate: 86.5,
+            best_group: {
+              group: 'default',
+              avg_ttft_ms: 10_500,
+              avg_tps: 44.5,
+            },
+          },
+        ],
+      },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ModelCardGrid models={[pricingModel()]} onModelClick={vi.fn()} />
+      </QueryClientProvider>
+    )
+    const metrics = screen.getByLabelText(
+      'Performance metrics for the last 24 hours'
+    )
+    expect(within(metrics).getByText('10.50s')).toBeVisible()
+    expect(within(metrics).getByText('44.5t/s')).toBeVisible()
+    expect(within(metrics).getByText('86.5%')).toBeVisible()
+    expect(within(metrics).getByTitle('Average TTFT')).toBeVisible()
+  })
+
+  it('keeps success visible without aggregate latency or throughput when no group has TTFT', () => {
+    queryClient.setQueryData(['perf-metrics-summary', 24], {
+      success: true,
+      data: {
+        models: [
+          {
+            model_name: 'example-model',
+            avg_latency_ms: 1200,
+            avg_tps: 42,
+            success_rate: 90,
+          },
+        ],
+      },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ModelCardGrid models={[pricingModel()]} onModelClick={vi.fn()} />
+      </QueryClientProvider>
+    )
+    const metrics = screen.getByLabelText(
+      'Performance metrics for the last 24 hours'
+    )
+    expect(within(metrics).getByText('—s')).toBeVisible()
+    expect(within(metrics).getByText('—t/s')).toBeVisible()
+    expect(within(metrics).getByText('90.0%')).toBeVisible()
+  })
+
   it('paginates the model cards and disables navigation at both boundaries', async () => {
     queryClient.setQueryData(['perf-metrics-summary', 24], {
       success: true,
@@ -470,7 +530,7 @@ describe('model cards', () => {
         model={pricingModel()}
         onClick={vi.fn()}
         perf={{
-          avg_latency_ms: 1200,
+          avg_ttft_ms: 1200,
           avg_tps: 42,
           success_rate: 100,
           recent_success_series: [
@@ -507,7 +567,7 @@ describe('model cards', () => {
         model={pricingModel()}
         onClick={vi.fn()}
         perf={{
-          avg_latency_ms: 1200,
+          avg_ttft_ms: 1200,
           avg_tps: 42,
           success_rate: 100,
           recent_success_series: [
@@ -534,7 +594,7 @@ describe('model cards', () => {
       <ModelCard
         model={pricingModel()}
         onClick={vi.fn()}
-        perf={{ avg_latency_ms: 1200, avg_tps: 42, success_rate: 100 }}
+        perf={{ avg_ttft_ms: 1200, avg_tps: 42, success_rate: 100 }}
       />
     )
 
@@ -559,7 +619,7 @@ describe('model cards', () => {
         model={pricingModel()}
         onClick={vi.fn()}
         perf={{
-          avg_latency_ms: 1200,
+          avg_ttft_ms: 1200,
           avg_tps: 42,
           success_rate: 80,
           recent_success_series: [

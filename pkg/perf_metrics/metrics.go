@@ -157,16 +157,20 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 
 	totals := map[string]counters{}
 	modelBuckets := map[string]map[int64]counters{}
+	groupTotals := map[bucketKey]counters{}
 	for _, row := range rows {
 		value := counters{
 			requestCount:   row.RequestCount,
 			successCount:   row.SuccessCount,
 			totalLatencyMs: row.TotalLatencyMs,
+			ttftSumMs:      row.TtftSumMs,
+			ttftCount:      row.TtftCount,
 			outputTokens:   row.OutputTokens,
 			generationMs:   row.GenerationMs,
 		}
 		mergeModelTotals(totals, row.ModelName, value)
 		mergeModelBucket(modelBuckets, row.ModelName, row.BucketTs, value)
+		mergeCounters(groupTotals, bucketKey{model: row.ModelName, group: row.Group}, value)
 	}
 
 	hotBuckets.Range(func(key, value any) bool {
@@ -185,9 +189,11 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 		}
 		mergeModelTotals(totals, k.model, snap)
 		mergeModelBucket(modelBuckets, k.model, k.bucketTs, snap)
+		mergeCounters(groupTotals, bucketKey{model: k.model, group: k.group}, snap)
 		return true
 	})
 
+	bestGroups := selectBestGroupPerformances(groupTotals)
 	models := make([]ModelSummary, 0, len(totals))
 	for name, total := range totals {
 		if total.requestCount == 0 {
@@ -204,6 +210,7 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 			AvgLatencyMs:        avgLatency,
 			SuccessRate:         math.Round(successRate*100) / 100,
 			AvgTps:              math.Round(avgTps*100) / 100,
+			BestGroup:           bestGroups[name],
 			RecentSuccessSeries: recentSuccessSeries(modelBuckets[name]),
 			RequestCount:        total.requestCount,
 		})
@@ -213,6 +220,26 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 	})
 
 	return SummaryAllResult{Models: models}, nil
+}
+
+func selectBestGroupPerformances(totals map[bucketKey]counters) map[string]*BestGroupPerformance {
+	best := make(map[string]*BestGroupPerformance)
+	for key, total := range totals {
+		ttft := avg(total.ttftSumMs, total.ttftCount)
+		if total.requestCount <= 0 || ttft <= 0 {
+			continue
+		}
+		current := best[key.model]
+		// Equal mean TTFT values use a stable group order. Throughput always
+		// belongs to the selected group, even when that group has no token usage.
+		if current != nil && (ttft > current.AvgTtftMs || (ttft == current.AvgTtftMs && key.group >= current.Group)) {
+			continue
+		}
+		best[key.model] = &BestGroupPerformance{
+			Group: key.group, AvgTtftMs: ttft, AvgTps: avgTps(total),
+		}
+	}
+	return best
 }
 
 func mergeModelTotals(totals map[string]counters, modelName string, value counters) {
