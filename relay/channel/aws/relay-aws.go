@@ -309,7 +309,9 @@ streamLoop:
 	}
 
 	_ = stream.Close()
-	claude.HandleStreamFinalResponse(c, info, claudeInfo)
+	if err := claude.HandleStreamFinalResponse(c, info, claudeInfo); err != nil {
+		return err, nil
+	}
 	return nil, claudeInfo.Usage
 }
 

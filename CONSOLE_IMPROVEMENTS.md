@@ -215,3 +215,34 @@ bun run build
 前端 **10 项交互测试**、8 个修改/新增 TypeScript 文件的 lint、保留版权头的格式检查及类型检查通过。15 个新增文案键在七种语言中完整。前端生产构建、Go 完整构建和预览 Linux 镜像构建通过；Rsbuild 总产物为 58,628.6 kB（gzip 16,915.3 kB，含全部按需加载资源）。界面复用 `StaticDataTable`、`StaticRowActions`、`Dialog`、`PasswordInput` 和项目表单组件，新组件只组合域名账户的业务数据与校验。
 
 另验证了 Root 权限边界与审计脱敏、金额舍入及绑定表不可用时拒绝回调。支付校验参考 [OWASP Third Party Payment Gateway Integration](https://cheatsheetseries.owasp.org/cheatsheets/Third_Party_Payment_Gateway_Integration_Cheat_Sheet.html) 的订单金额校验、签名验证和幂等处理要求；没有修改用户登录或会话协议。专项结果位于忽略目录 `.local-tests/epay-domains/`。测试使用 SDK 生成的签名，不涉及真实付款；本轮未完成浏览器视觉验证。
+
+## 2026-09-14 缺少可用计费信息时重试
+
+原来上游返回空流、空结果或全零 usage 时，结算只记录“未获得可用的计费信息，本次未扣费”，转发函数仍返回成功；部分流式适配器还会提前发送结束标记。现在这一情况返回 **HTTP 502 / `missing_usage`**，并进入现有渠道切换流程。OpenAI Chat、Responses（含 compact 和协议转换）、Claude、Gemini 在发送响应正文或结束标记前校验最终用量；统一文本结算也会返回错误，避免其他适配器将无用量请求记录成成功。
+
+重试继续遵守模型覆盖值、全局次数、可重试状态码范围、固定渠道和亲和路由规则，无需新增开关。要重试，现有状态码范围需包含 502，且该模型允许的重试次数大于零。上游没有 usage，但正常内容可以估算 Token 时继续正常结算；按次计费、实际工具调用和免费分组的合法零费用不会触发此错误。已识别的上游内容拒绝使用不可重试的 400。
+
+仅在客户端连接有效、响应尚未发送时切换渠道。已经发送的流无法改写 HTTP 状态或撤回内容，因此记录 502 并发送协议对应的流错误，不再拼接其他渠道的输出；客户端取消后不继续请求上游。失败尝试准备但尚未发送的 SSE 响应头会清除，避免下一渠道的 JSON 响应或最终 502 被误识别成 SSE。
+
+失败尝试保留当前预扣，不提前结算为零；最终成功只结算一次，全部失败退回预扣。用户日志只显示最终结果，管理员保留每次尝试的状态码和错误码；模型广场仍只统计最终尝试。没有数据库结构或迁移变更。
+
+验证使用 SQLite **3.50.4**、MySQL **8.0.45**、PostgreSQL **16.13**。31 个真实本地上游 HTTP 场景在三种主数据库和各自独立日志库上通过，覆盖空流、空 JSON、空 Responses 完成事件、不同协议、禁用重试、成功重试、退款、已发送响应、客户端取消、无 usage 的正常输出、固定费用、工具费用及已识别的内容拒绝。另验证了固定费用的三库预扣/结算/退款路径、连接状态与固定渠道的重试限制。
+
+```powershell
+# DSN 指向专用测试实例，不使用预览或线上数据。
+$env:TEST_MANAGE_USER_SEPARATE_LOG_DB = '1'
+foreach ($engine in @('sqlite', 'mysql', 'postgres')) {
+  $env:TEST_MANAGE_USER_DIALECT = $engine
+  go test ./controller -run '^(TestHTTPRelayRespectsModelRetryLimitsAndFinalLog|TestMissingUsageRetryHonorsConnectionState|TestShouldRetryHonorsPinRetryMode)$' -count=1 -v
+}
+go test ./service -run '^TestFixedPriceBillingDatabaseMatrix$' -count=1 -v
+go test ./relay/channel/openai ./relay/channel/claude ./relay/channel/gemini ./relay/channel/aws ./relay/channel/codex ./relay/helper ./relay/common ./pkg/perf_metrics -count=1
+go test ./service -run 'Test(FixedPriceBillingDatabaseMatrix|CalculateText|PostText|.*BillingUsage|BuildTieredTokenParams|TryTiered)' -count=1
+go build ./...
+
+# relaykit 目录
+$env:GOWORK = 'off'
+go build ./...
+```
+
+以上专项测试、主模块构建、relaykit 独立构建以及预览环境的前端生产构建和 Linux 镜像构建通过。验证日志保存在忽略目录 `.local-tests/missing-usage/`；测试仅请求本地模拟上游。

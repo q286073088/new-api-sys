@@ -239,6 +239,9 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if info.StreamStatus != nil && !info.StreamStatus.IsNormalEnd() {
 		logger.LogWarn(c, fmt.Sprintf("Gemini stream ended unexpectedly: %s", info.StreamStatus.Summary()))
 	}
+	if err := service.ValidateTextUsage(c, info, usage); err != nil {
+		return nil, err
+	}
 
 	return usage, nil
 }
@@ -392,6 +395,9 @@ func GeminiChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 			)
 		}
 
+		if err := service.ValidateTextUsage(c, info, &usage); err != nil {
+			return nil, err
+		}
 		service.ResetStatusCode(newAPIError, c.GetString("status_code_mapping"))
 
 		switch info.RelayFormat {
@@ -410,6 +416,9 @@ func GeminiChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 	fullTextResponse := responseGeminiChat2OpenAI(c, &geminiResponse)
 	fullTextResponse.Model = info.UpstreamModelName
 	usage := buildUsageFromGeminiResponse(c, info, &geminiResponse)
+	if err := service.ValidateTextUsage(c, info, &usage); err != nil {
+		return nil, err
+	}
 
 	fullTextResponse.Usage = usage
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -95,6 +96,23 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			if c.Request.Context().Err() != nil {
+				return
+			}
+			if relayFormat != types.RelayFormatOpenAIRealtime && c.Writer.Written() {
+				if newAPIError.GetErrorCode() == types.ErrorCodeMissingUsage && strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
+					switch relayFormat {
+					case types.RelayFormatClaude:
+						_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: newAPIError.ToClaudeError()})
+					case types.RelayFormatOpenAIResponses:
+						data := common.GetJsonString(gin.H{"type": "error", "code": newAPIError.GetErrorCode(), "message": newAPIError.Error()})
+						_ = helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: "error"}, data)
+					default:
+						_ = helper.ObjectData(c, gin.H{"error": newAPIError.ToOpenAIError()})
+					}
+				}
+				return
+			}
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -202,6 +220,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
+	requestIsStream := relayInfo.IsStream
 	for ; retryParam.GetRemainingRetries() >= 0; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.Attempt
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
@@ -228,6 +247,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 		relayInfo.PerformanceAttempt = &relaycommon.RelayPerformanceAttempt{StartedAt: time.Now()}
+		relayInfo.StreamStatus = nil
+		relayInfo.IsStream = requestIsStream
+		common.SetContextKey(c, constant.ContextKeyLocalCountTokens, false)
+		responseHeaders := c.Writer.Header().Clone()
 
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
@@ -246,9 +269,19 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			relayInfo.LastError = nil
 			return
 		}
+		if !c.Writer.Written() {
+			// An empty stream may have prepared SSE headers without sending
+			// them. Discard those headers before another channel or a JSON error.
+			clear(c.Writer.Header())
+			maps.Copy(c.Writer.Header(), responseHeaders)
+			c.Set("event_stream_headers_set", false)
+		}
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
+		if newAPIError.GetErrorCode() == types.ErrorCodeMissingUsage && relayInfo.StreamStatus != nil {
+			relayInfo.StreamStatus.RecordError(newAPIError.Error())
+		}
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError, relayInfo)
 
@@ -371,6 +404,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
 	if openaiErr == nil {
+		return false
+	}
+	if c.Writer.Written() || c.Request.Context().Err() != nil {
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {

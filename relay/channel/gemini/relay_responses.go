@@ -52,6 +52,9 @@ func GeminiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	}
 
 	usage := buildUsageFromGeminiResponse(c, info, &geminiResponse)
+	if err := service.ValidateTextUsage(c, info, &usage); err != nil {
+		return nil, err
+	}
 
 	convertResult, err := service.ConvertResponse(c, info, types.RelayFormatOpenAIResponses, &geminiResponse)
 	if err != nil {

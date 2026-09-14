@@ -35,11 +35,13 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
-	// 写入新的 response body
-	service.IOCopyBytesGracefully(c, resp, responseBody)
-
 	// compute usage
 	usage := relayconvert.NormalizeResponsesUsage(responsesResponse.Usage)
+	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
+		if text := service.ExtractOutputTextFromResponses(&responsesResponse); text != "" {
+			usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
+		}
+	}
 	// Count actual tool invocations from Output (not tool declarations).
 	for _, output := range responsesResponse.Output {
 		switch output.Type {
@@ -60,6 +62,10 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		}
 	}
 	imageCounter.Commit(info)
+	if err := service.ValidateTextUsage(c, info, usage); err != nil {
+		return nil, err
+	}
+	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	return usage, nil
 }
@@ -76,6 +82,8 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	var responseTextBuilder strings.Builder
 	imageCounter := &relaycommon.ImageGenerationCallCounter{}
 	imageCommitted := false
+	var terminalResponse dto.ResponsesStreamResponse
+	var terminalData string
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -86,7 +94,6 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
-		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
 		case "response.completed", "response.done":
 			if streamResponse.Response != nil {
@@ -113,6 +120,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				imageCommitted = true
 			}
 		case "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+			if streamResponse.Response != nil && streamResponse.Response.Usage != nil {
+				usage = dto.MergeUsageNonZero(usage, relayconvert.NormalizeResponsesUsage(streamResponse.Response.Usage))
+			}
 			if !imageCommitted {
 				imageCounter.Reset()
 				imageCounter.Commit(info)
@@ -137,6 +147,14 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				}
 			}
 		}
+		switch streamResponse.Type {
+		case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+			// Do not announce completion until usage has been validated.
+			terminalResponse, terminalData = streamResponse, data
+			sr.Done()
+		default:
+			sendResponsesStreamData(c, streamResponse, data)
+		}
 	})
 
 	if usage.CompletionTokens == 0 {
@@ -157,6 +175,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	if usage.BillingUsage != nil {
 		usage.BillingUsage = dto.CloneBillingUsageWithEstimatedCompletion(usage.BillingUsage, usage.CompletionTokens)
 	}
+	if err := service.ValidateTextUsage(c, info, usage); err != nil {
+		return nil, err
+	}
+	sendResponsesStreamData(c, terminalResponse, terminalData)
 
 	return usage, nil
 }

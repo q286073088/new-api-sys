@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"math"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -68,12 +69,10 @@ type textQuotaSummary struct {
 	FixedPriceBilling      bool
 }
 
-// hasBillableUsage reports whether this request should incur any charge.
-// A request can carry zero tokens yet still be billable via a tool-call
-// surcharge (e.g. /v1/alpha/search returns no usage but bills one web_search
-// call), so token count alone is not sufficient to decide.
+// hasBillableUsage distinguishes missing usage from tokens, fixed request fees
+// and actual tool calls. A free group may price valid tool usage at zero.
 func (s *textQuotaSummary) hasBillableUsage() bool {
-	return s.FixedPriceBilling || s.TotalTokens > 0 || !s.ToolCallSurchargeQuota.IsZero()
+	return s.FixedPriceBilling || s.TotalTokens > 0 || len(s.ToolSurchargeItems) > 0 || !s.ToolCallSurchargeQuota.IsZero()
 }
 
 func cacheWriteTokensTotal(summary textQuotaSummary) int {
@@ -391,7 +390,39 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 	return "openai"
 }
 
-func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
+// ValidateTextUsage runs after provider usage normalization, before committing a
+// response. A missing usage object alone is not a failure: local estimates,
+// fixed-price expressions and tool surcharges can still supply billing data.
+func ValidateTextUsage(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) *types.NewAPIError {
+	billingUsage := effectiveBillingUsage(usage)
+	if billingUsage != nil && (billingUsage.PromptTokens > 0 || billingUsage.CompletionTokens > 0) {
+		return nil
+	}
+	summary := calculateTextQuotaSummary(ctx, relayInfo, billingUsage)
+	if summary.hasBillableUsage() {
+		return nil
+	}
+	if snap := relayInfo.TieredBillingSnapshot; snap != nil && (billingUsage != nil || billingexpr.UsesFixedPricing(snap.ExprString)) {
+		if billingUsage == nil {
+			billingUsage = &dto.Usage{PromptTokens: summary.PromptTokens, CompletionTokens: summary.CompletionTokens, TotalTokens: summary.TotalTokens}
+		}
+		ok, _, result := TryTieredSettle(relayInfo, BuildTieredTokenParams(billingUsage, summary.IsClaudeUsageSemantic, billingexpr.UsedVars(snap.ExprString)))
+		if ok && isFixedPriceSettlement(relayInfo, result) {
+			return nil
+		}
+	}
+	return missingUsageError(ctx)
+}
+
+func missingUsageError(ctx *gin.Context) *types.NewAPIError {
+	rejectReason := common.GetContextKeyString(ctx, constant.ContextKeyAdminRejectReason)
+	if rejectReason == "openai_finish_reason=content_filter" || rejectReason == "claude_stop_reason=refusal" || strings.HasPrefix(rejectReason, "gemini_block_reason=") {
+		return types.NewOpenAIError(fmt.Errorf("上游拒绝了本次请求，本次未扣费"), types.ErrorCodePromptBlocked, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
+	return types.NewOpenAIError(fmt.Errorf("未获得可用的计费信息，本次未扣费"), types.ErrorCodeMissingUsage, http.StatusBadGateway)
+}
+
+func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) *types.NewAPIError {
 	originUsage := usage
 	billingUsage := effectiveBillingUsage(usage)
 	if usage == nil {
@@ -449,12 +480,13 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 
 	if !summary.hasBillableUsage() {
-		extraContent = append(extraContent, "未获得可用的计费信息，本次未扣费")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
-	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
-		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
+		// Keep the reservation open for a different channel. Relay owns the
+		// final refund when every attempt fails.
+		return missingUsageError(ctx)
 	}
+	model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
+	model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
@@ -546,4 +578,5 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		Other:            other,
 	})
 	perfmetrics.RecordRelaySample(relayInfo, true, int64(summary.CompletionTokens))
+	return nil
 }

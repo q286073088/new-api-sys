@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -194,7 +195,7 @@ func TestOaiResponsesHandlerIncompleteStatusCommitsZeroImageGeneration(t *testin
 	assert.Equal(t, 0, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
 }
 
-func runResponsesImageBillingStream(t *testing.T, events ...string) *relaycommon.RelayInfo {
+func runResponsesImageBillingStream(t *testing.T, wantError types.ErrorCode, events ...string) *relaycommon.RelayInfo {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	oldTimeout := constant.StreamingTimeout
@@ -229,7 +230,13 @@ func runResponsesImageBillingStream(t *testing.T, events ...string) *relaycommon
 	}
 
 	_, apiErr := OaiResponsesStreamHandler(c, info, resp)
-	require.Nil(t, apiErr)
+	if wantError == "" {
+		require.Nil(t, apiErr)
+	} else {
+		require.NotNil(t, apiErr)
+		assert.Equal(t, wantError, apiErr.GetErrorCode())
+		assert.Equal(t, http.StatusBadGateway, apiErr.StatusCode)
+	}
 	require.NotNil(t, info.ResponsesUsageInfo)
 	require.Contains(t, info.ResponsesUsageInfo.BuiltInTools, dto.BuildInToolImageGeneration)
 	return info
@@ -239,6 +246,7 @@ func TestOaiResponsesStreamHandlerDeduplicatesCompletedImageOutput(t *testing.T)
 	item := `{"type":"image_generation_call","id":"img_1","call_id":"call_1","status":"completed","result":"base64-a"}`
 	info := runResponsesImageBillingStream(
 		t,
+		"",
 		`{"type":"response.output_item.done","output_index":0,"item":`+item+`}`,
 		`{"type":"response.completed","response":{"status":"completed","output":[`+item+`],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`,
 	)
@@ -249,6 +257,7 @@ func TestOaiResponsesStreamHandlerDeduplicatesCompletedImageOutput(t *testing.T)
 func TestOaiResponsesStreamHandlerDiscardsImageOutputOnIncomplete(t *testing.T) {
 	info := runResponsesImageBillingStream(
 		t,
+		types.ErrorCodeMissingUsage,
 		`{"type":"response.output_item.done","output_index":0,"item":{"type":"image_generation_call","id":"img_1","status":"completed","result":"base64-a"}}`,
 		`{"type":"response.incomplete","response":{"status":"incomplete"}}`,
 	)
@@ -259,6 +268,7 @@ func TestOaiResponsesStreamHandlerDiscardsImageOutputOnIncomplete(t *testing.T) 
 func TestOaiResponsesStreamHandlerDoesNotCountPartialImageEvent(t *testing.T) {
 	info := runResponsesImageBillingStream(
 		t,
+		types.ErrorCodeMissingUsage,
 		`{"type":"response.image_generation_call.partial_image","output_index":0,"partial_image_b64":"partial-bytes"}`,
 		`{"type":"response.completed","response":{"status":"completed","output":[]}}`,
 	)

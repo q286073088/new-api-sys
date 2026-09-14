@@ -231,10 +231,7 @@ func countClaudeStreamBillableTools(c *gin.Context, info *relaycommon.RelayInfo,
 	}
 }
 
-func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo) {
-	if claudeInfo.Usage.PromptTokens == 0 {
-		//上游出错
-	}
+func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo) *types.NewAPIError {
 	if claudeInfo.Usage.CompletionTokens == 0 || !claudeInfo.Done {
 		if common.DebugEnabled {
 			common.SysLog("claude response usage is not complete, maybe upstream error")
@@ -254,6 +251,9 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 		claudeInfo.Usage.UsageSemantic = "anthropic"
 	}
 	relayconvert.FinalizeClaudeStreamBillingUsage(claudeInfo)
+	if err := service.ValidateTextUsage(c, info, claudeInfo.Usage); err != nil {
+		return err
+	}
 
 	if info.RelayFormat == types.RelayFormatClaude {
 		//
@@ -271,17 +271,18 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 		state, err := claudeToGeminiStreamState(info)
 		if err != nil {
 			common.SysLog("error creating Gemini stream state: " + err.Error())
-			return
+			return nil
 		}
 		results, err := service.FinalizeStreamResponse(c, info, state)
 		if err != nil {
 			common.SysLog("error finalizing Gemini stream response: " + err.Error())
-			return
+			return nil
 		}
 		if sendErr := sendGeminiStreamResults(c, results); sendErr != nil {
 			common.SysLog("send final Gemini stream response failed: " + sendErr.Error())
 		}
 	}
+	return nil
 }
 
 func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
@@ -303,7 +304,9 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		return nil, err
 	}
 
-	HandleStreamFinalResponse(c, info, claudeInfo)
+	if err := HandleStreamFinalResponse(c, info, claudeInfo); err != nil {
+		return nil, err
+	}
 	return claudeInfo.Usage, nil
 }
 
@@ -388,6 +391,9 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		}
 	}
 
+	if err := service.ValidateTextUsage(c, info, claudeInfo.Usage); err != nil {
+		return err
+	}
 	service.IOCopyBytesGracefully(c, httpResp, responseData)
 	return nil
 }

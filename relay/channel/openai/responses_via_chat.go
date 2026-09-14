@@ -58,6 +58,9 @@ func OaiChatToResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
 	}
 
+	if err := service.ValidateTextUsage(c, info, usage); err != nil {
+		return nil, err
+	}
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 	return usage, nil
 }
@@ -174,6 +177,9 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		state.SetUsage(usage)
 	}
 
+	if err := service.ValidateTextUsage(c, info, usage); err != nil {
+		return nil, err
+	}
 	finalResults, err := service.FinalizeStreamResponse(c, info, state)
 	if err != nil {
 		if failResponsesStream(err) {
