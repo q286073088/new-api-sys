@@ -90,6 +90,8 @@ func InitOptionMap() {
 	common.OptionMap["CustomCallbackAddress"] = ""
 	common.OptionMap["EpayId"] = ""
 	common.OptionMap["EpayKey"] = ""
+	common.OptionMap[operation_setting.EpayDomainConfigsKey] = "[]"
+	_ = operation_setting.UpdateEpayDomainConfigs("[]")
 	common.OptionMap["Price"] = strconv.FormatFloat(operation_setting.Price, 'f', -1, 64)
 	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(operation_setting.USDExchangeRate, 'f', -1, 64)
 	common.OptionMap["MinTopUp"] = strconv.Itoa(operation_setting.MinTopUp)
@@ -236,6 +238,9 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if key == operation_setting.EpayDomainConfigsKey {
+		return updateEpayDomainConfigOption(value)
+	}
 	if key == setting.ReferralSettingKey || key == "ModelRetryTimes" {
 		return UpdateOptionsBulk(map[string]string{key: value})
 	}
@@ -299,6 +304,11 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
+	if key == operation_setting.EpayDomainConfigsKey {
+		if err := operation_setting.UpdateEpayDomainConfigs(value); err != nil {
+			return err
+		}
+	}
 	if key == "ModelRetryTimes" {
 		if err := operation_setting.UpdateModelRetryTimes(value); err != nil {
 			return err

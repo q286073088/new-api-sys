@@ -92,19 +92,11 @@ func isWaffoPancakeWebhookEnabled() bool {
 	return isWaffoPancakeTopUpEnabled()
 }
 
-func isEpayTopUpEnabled() bool {
+func isEpayTopUpEnabled(host string) bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	return isEpayWebhookConfigured() && len(operation_setting.PayMethods) > 0
-}
-
-func isEpayWebhookConfigured() bool {
-	return strings.TrimSpace(operation_setting.PayAddress) != "" &&
-		strings.TrimSpace(operation_setting.EpayId) != "" &&
-		strings.TrimSpace(operation_setting.EpayKey) != ""
-}
-
-func isEpayWebhookEnabled() bool {
-	return isEpayTopUpEnabled()
+	merchant := operation_setting.GetEpayMerchant(host)
+	return strings.TrimSpace(merchant.MerchantID) != "" && strings.TrimSpace(merchant.Key) != "" &&
+		operation_setting.ValidateEpayAddress(merchant.PayAddress) == nil && len(operation_setting.PayMethods) > 0
 }

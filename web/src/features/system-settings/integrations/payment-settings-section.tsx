@@ -62,6 +62,7 @@ import { safeNumberFieldProps } from '../utils/numeric-field'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
+import { EpayDomainsEditor } from './epay-domains-editor'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
   formatJsonForEditor,
@@ -103,6 +104,10 @@ const paymentSchema = z.object({
   }, 'Provide a valid callback URL starting with http:// or https://'),
   EpayId: z.string(),
   EpayKey: z.string(),
+  EpayDomainConfigs: z.string().superRefine((value, ctx) => {
+    const error = getJsonError(value, (parsed) => Array.isArray(parsed))
+    if (error) ctx.addIssue({ code: 'custom', message: error })
+  }),
   Price: z.coerce.number().min(0),
   MinTopUp: z.coerce.number().min(0),
   CustomCallbackAddress: z
@@ -422,6 +427,7 @@ export function PaymentSettingsSection({
       PayAddress: removeTrailingSlash(values.PayAddress),
       EpayId: values.EpayId.trim(),
       EpayKey: values.EpayKey.trim(),
+      EpayDomainConfigs: values.EpayDomainConfigs.trim(),
       Price: values.Price,
       MinTopUp: values.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
@@ -464,6 +470,7 @@ export function PaymentSettingsSection({
       PayAddress: removeTrailingSlash(initialRef.current.PayAddress),
       EpayId: initialRef.current.EpayId.trim(),
       EpayKey: initialRef.current.EpayKey.trim(),
+      EpayDomainConfigs: initialRef.current.EpayDomainConfigs.trim(),
       Price: initialRef.current.Price,
       MinTopUp: initialRef.current.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(
@@ -519,6 +526,16 @@ export function PaymentSettingsSection({
 
     if (sanitized.EpayKey && sanitized.EpayKey !== initial.EpayKey) {
       updates.push({ key: 'EpayKey', value: sanitized.EpayKey })
+    }
+
+    if (
+      normalizeJsonForComparison(sanitized.EpayDomainConfigs) !==
+      normalizeJsonForComparison(initial.EpayDomainConfigs)
+    ) {
+      updates.push({
+        key: 'EpayDomainConfigs',
+        value: sanitized.EpayDomainConfigs,
+      })
     }
 
     if (sanitized.Price !== initial.Price) {
@@ -1252,6 +1269,19 @@ export function PaymentSettingsSection({
                     )}
                   />
                 </div>
+                <FormField
+                  control={form.control}
+                  name='EpayDomainConfigs'
+                  render={({ field }) => (
+                    <FormItem>
+                      <EpayDomainsEditor
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
             </TabsContent>
 

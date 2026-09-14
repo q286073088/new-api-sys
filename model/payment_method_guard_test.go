@@ -1,13 +1,76 @@
 package model
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestEpayOrderBindingDatabaseMatrix(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		for _, released := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/upgrade_%t", dialect, released), func(t *testing.T) {
+				setupReferralDatabase(t, dialect, released)
+				previousConfigs, previousMap := common.GetJsonString(operation_setting.GetEpayDomainConfigs()), common.OptionMap
+				common.OptionMap = map[string]string{}
+				t.Cleanup(func() {
+					require.NoError(t, operation_setting.UpdateEpayDomainConfigs(previousConfigs))
+					common.OptionMap = previousMap
+				})
+				if released {
+					require.NoError(t, DB.Create(&releasedReferralTopUp{UserId: 3, Amount: 7, Money: 49, TradeNo: "historical-epay", PaymentMethod: "alipay", PaymentProvider: PaymentProviderEpay, Status: common.TopUpStatusSuccess}).Error)
+					require.NoError(t, DB.Create(&Option{Key: "EpayId", Value: "historical-merchant"}).Error)
+				}
+				require.NoError(t, migrateDB())
+				referralUsers(t)
+				const config = `[{"id":"merchant-a","domain":"a.example.com","merchant_id":"10001","key":"persisted-secret","pay_address":"https://pay.example.com"}]`
+				require.NoError(t, UpdateOption(operation_setting.EpayDomainConfigsKey, config))
+				binding := &EpayOrderBinding{Domain: "a.example.com", MerchantID: "10001", MerchantKey: "persisted-secret", PayAddress: "https://pay.example.com"}
+				order := &TopUp{UserId: 3, Amount: 10, Money: 10, TradeNo: "bound-payment", PaymentMethod: "alipay", PaymentProvider: PaymentProviderEpay, Status: common.TopUpStatusPending}
+				require.NoError(t, CreateEpayTopUp(order, binding))
+				// A second startup preserves both the old rows and the new binding.
+				require.NoError(t, migrateDB())
+				storedBinding, err := GetEpayOrderBinding(order.TradeNo)
+				require.NoError(t, err)
+				assert.Equal(t, binding.Id, storedBinding.Id)
+				assert.Equal(t, EpayOrderTopUp, storedBinding.OrderType)
+				assert.Equal(t, "persisted-secret", storedBinding.MerchantKey)
+				assert.JSONEq(t, `{}`, common.GetJsonString(storedBinding))
+				var stored Option
+				require.NoError(t, DB.Where(&Option{Key: operation_setting.EpayDomainConfigsKey}).First(&stored).Error)
+				require.NoError(t, operation_setting.UpdateEpayDomainConfigs(`[]`))
+				require.NoError(t, updateOptionMap(stored.Key, stored.Value))
+				assert.Equal(t, "persisted-secret", operation_setting.GetEpayMerchant("A.example.com:443").Key)
+				masked := `[{"id":"merchant-a","domain":"renamed.example.com","merchant_id":"10001","key":"","pay_address":"https://pay.example.com"}]`
+				require.NoError(t, UpdateOption(operation_setting.EpayDomainConfigsKey, masked))
+				assert.Equal(t, "persisted-secret", operation_setting.GetEpayMerchant("renamed.example.com").Key)
+				duplicate := *storedBinding
+				duplicate.Id = 0
+				assert.Error(t, DB.Create(&duplicate).Error, "an order cannot acquire a second merchant binding")
+				invalid := &TopUp{UserId: 3, Amount: 1, Money: 1, TradeNo: "binding-rollback", PaymentProvider: PaymentProviderEpay, Status: common.TopUpStatusPending}
+				assert.Error(t, CreateEpayTopUp(invalid, &EpayOrderBinding{MerchantID: "10001", PayAddress: "https://pay.example.com"}))
+				var count int64
+				require.NoError(t, DB.Model(&TopUp{}).Where("trade_no = ?", invalid.TradeNo).Count(&count).Error)
+				assert.Zero(t, count, "an order must roll back when its merchant cannot be bound")
+				if released {
+					old := GetTopUpByTradeNo("historical-epay")
+					require.NotNil(t, old)
+					assert.EqualValues(t, 7, old.Amount)
+					assert.Equal(t, 49.0, old.Money)
+					assert.Equal(t, common.TopUpStatusSuccess, old.Status)
+					var historical Option
+					require.NoError(t, DB.Where(&Option{Key: "EpayId"}).First(&historical).Error)
+					assert.Equal(t, "historical-merchant", historical.Value)
+				}
+			})
+		}
+	}
+}
 
 func insertUserForPaymentGuardTest(t *testing.T, id int, quota int) *User {
 	t.Helper()

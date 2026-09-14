@@ -90,6 +90,17 @@ func GetOptions(c *gin.Context) {
 			continue
 		}
 		value := common.Interface2String(v)
+		if k == operation_setting.EpayDomainConfigsKey {
+			var items []operation_setting.EpayDomainConfig
+			if common.UnmarshalJsonStr(value, &items) != nil {
+				continue
+			}
+			for i := range items {
+				items[i].KeyConfigured = items[i].Key != ""
+				items[i].Key = ""
+			}
+			value = common.GetJsonString(items)
+		}
 		isSensitiveKey := strings.HasSuffix(k, "Token") ||
 			strings.HasSuffix(k, "Secret") ||
 			strings.HasSuffix(k, "Key") ||

@@ -78,8 +78,8 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("SUBUSR%dNO%s", userId, tradeNo)
 
-	client := GetEpayClient()
-	if client == nil {
+	client, binding, err := service.NewEpayCheckout(c.Request.Host)
+	if err != nil {
 		common.ApiErrorMsg(c, "当前管理员未配置支付信息")
 		return
 	}
@@ -94,7 +94,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
-	if err := order.Insert(); err != nil {
+	if err := model.CreateEpaySubscriptionOrder(order, binding); err != nil {
 		common.ApiErrorMsg(c, "创建订单失败")
 		return
 	}
@@ -141,13 +141,8 @@ func SubscriptionEpayNotify(c *gin.Context) {
 		return
 	}
 
-	client := GetEpayClient()
-	if client == nil {
-		_, _ = c.Writer.Write([]byte("fail"))
-		return
-	}
-	verifyInfo, err := client.Verify(params)
-	if err != nil || !verifyInfo.VerifyStatus {
+	verifyInfo, err := service.VerifyEpayPayment(params, model.EpayOrderSubscription)
+	if err != nil {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -196,13 +191,8 @@ func SubscriptionEpayReturn(c *gin.Context) {
 		return
 	}
 
-	client := GetEpayClient()
-	if client == nil {
-		c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
-		return
-	}
-	verifyInfo, err := client.Verify(params)
-	if err != nil || !verifyInfo.VerifyStatus {
+	verifyInfo, err := service.VerifyEpayPayment(params, model.EpayOrderSubscription)
+	if err != nil {
 		c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
 		return
 	}

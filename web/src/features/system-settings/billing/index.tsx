@@ -64,6 +64,7 @@ const defaultBillingSettings: BillingSettings = {
   PayAddress: '',
   EpayId: '',
   EpayKey: '',
+  EpayDomainConfigs: '[]',
   Price: 7.3,
   MinTopUp: 1,
   CustomCallbackAddress: '',

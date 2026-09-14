@@ -351,6 +351,7 @@ func migrateDB() error {
 		&Log{},
 		&Midjourney{},
 		&TopUp{},
+		&EpayOrderBinding{},
 		&ReferralReward{},
 		&QuotaData{},
 		&Task{},

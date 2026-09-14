@@ -172,3 +172,46 @@ bun run build
 ```
 
 前端共 **25 项测试**通过，四个修改的 TypeScript 文件通过 oxlint 和保留版权头的 oxfmt 检查。继续复用 `ModelCardGrid`、`ModelPerfBadge` 及共享格式函数，没有新增通用 UI 组件。验证日志位于忽略目录 `.local-tests/best-group-performance/`。
+
+## 2026-09-14 按访问域名选择易支付商户
+
+在「系统设置 → 计费设置 → 支付网关 → Epay → 易支付域名收款账户」添加域名、商户 ID、商户密钥和可选的支付地址，最后点击「保存所有设置」。钱包充值与套餐购买都使用这套映射。
+
+| 网站域名 | 易支付商户 ID | 支付地址 |
+| --- | --- | --- |
+| `cn.example.com` | `10001` | 留空，使用上方默认易支付地址 |
+| `overseas.example.com` | `10002` | 可填写另一个易支付网关地址 |
+
+每个商户都需填写自己的密钥。已保存的密钥不会回传浏览器，编辑时留空保留；更换商户 ID 或支付地址时必须重新填写密钥。列表最多 100 条，同一域名只能配置一次。删除映射后，该域名的新订单使用默认账户。
+
+匹配依据是 new-api 收到的 HTTP `Host`，按域名精确匹配，忽略大小写、HTTP/HTTPS、端口和末尾的点。不支持通配符，不自动匹配子域名。未匹配的域名使用原默认商户；默认商户未配置时，该域名不提供易支付。域名账户有完整独立配置时，即使没有默认商户也能使用。
+
+反向代理需要保留用户访问的域名，例如 Nginx 使用 `proxy_set_header Host $host;`。`Origin`、`Referer` 和 `X-Forwarded-Host` 不用于选择商户。回调地址继续使用「支付回调地址」或「服务器地址」配置，不要求回调域名与下单域名相同。多节点环境应先统一升级支付和回调节点，再启用域名映射；节点使用同一个主数据库保存订单及商户绑定。
+
+新订单与下单时的商户凭据在同一个事务内保存到 `epay_order_bindings`。后续编辑、删除域名配置或轮换默认商户，都不改变已创建订单的验签凭据。回调按订单验证商户 ID、签名、订单类型和支付金额，使用与下单完全相同的金额舍入方式；例如原始金额为 `1.005`、发送到易支付的金额为 `1.00` 时，按 `1.00` 验证。数据库读取异常会拒绝回调，不回退到默认商户。重复回调只充值、创建返利及排队充值通知一次。
+
+升级前没有商户绑定的订单仍依赖原默认商户配置；这部分待付款订单处理完之前，应保留原默认配置。首次启动自动创建绑定表，不改写旧充值订单。商户密钥按现有支付配置方式存放在主数据库中，绑定记录不作为 API 数据返回，写入凭据时关闭 SQL 日志。设置接口沿用 `RootAuth`，普通用户和普通管理员不能读写配置；操作审计不含密钥或可用访问令牌。
+
+实际验证使用 SQLite **3.50.4**、MySQL **8.0.45**、PostgreSQL **16.13**。三库均通过新建、基于 `v1.0.0-rc.36` 相关表结构的升级、重复迁移、旧订单及默认设置保留、唯一约束、绑定失败后的事务回滚，以及配置持久化与重新加载验证。下单和回调测试另外使用同类型独立日志库，覆盖域名匹配、伪造转发头、默认账户回退、无默认账户、跨域名回调、配置删除、错误商户/密钥/金额、重复通知、充值返利及套餐重复回调。
+
+```powershell
+# TEST_MYSQL_DSN、TEST_POSTGRES_DSN 指向专用空测试数据库
+go test ./model -run '^TestEpayOrderBindingDatabaseMatrix$' -count=1 -v
+$env:TEST_MANAGE_USER_SEPARATE_LOG_DB = '1'
+foreach ($engine in @('sqlite', 'mysql', 'postgres')) {
+  $env:TEST_MANAGE_USER_DIALECT = $engine
+  go test ./controller -run '^TestEpay' -count=1 -v
+}
+go test ./controller -run '^(TestTopUpQuotaValidation|TestValidateTopUpQuotaReturnsMaximumAmount|TestRequestAmount.*)$' -count=1
+go build ./...
+
+# web 目录
+bun run typecheck
+bun run test src/features/system-settings/integrations/__tests__/epay-domains.test.tsx
+bun run i18n:sync
+bun run build
+```
+
+前端 **10 项交互测试**、8 个修改/新增 TypeScript 文件的 lint、保留版权头的格式检查及类型检查通过。15 个新增文案键在七种语言中完整。前端生产构建、Go 完整构建和预览 Linux 镜像构建通过；Rsbuild 总产物为 58,628.6 kB（gzip 16,915.3 kB，含全部按需加载资源）。界面复用 `StaticDataTable`、`StaticRowActions`、`Dialog`、`PasswordInput` 和项目表单组件，新组件只组合域名账户的业务数据与校验。
+
+另验证了 Root 权限边界与审计脱敏、金额舍入及绑定表不可用时拒绝回调。支付校验参考 [OWASP Third Party Payment Gateway Integration](https://cheatsheetseries.owasp.org/cheatsheets/Third_Party_Payment_Gateway_Integration_Cheat_Sheet.html) 的订单金额校验、签名验证和幂等处理要求；没有修改用户登录或会话协议。专项结果位于忽略目录 `.local-tests/epay-domains/`。测试使用 SDK 生成的签名，不涉及真实付款；本轮未完成浏览器视觉验证。
