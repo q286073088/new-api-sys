@@ -3,6 +3,7 @@ package model
 import (
 	"slices"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 )
@@ -13,11 +14,14 @@ var filterEvalOrder = []dto.ChannelFilterKind{
 }
 
 // ChannelSatisfiesFilters reports whether ch passes every filter.
-// On false, it returns the kind of the first violated filter (request_path
-// then task_plugin_identity) for error attribution.
+// Local node exclusions take precedence over request filters. On false,
+// it returns the first violated policy for error attribution.
 func ChannelSatisfiesFilters(ch *Channel, modelName string, filters []dto.ChannelFilter) (bool, dto.ChannelFilterKind) {
 	if ch == nil {
 		return false, ""
+	}
+	if common.IsChannelExcludedOnNode(ch.Id) {
+		return false, dto.FilterNodeExclusion
 	}
 	for _, kind := range filterEvalOrder {
 		for _, filter := range filters {
@@ -40,7 +44,15 @@ func filterCandidateIDs(ids []int, modelName string, filters []dto.ChannelFilter
 	if len(ids) == 0 {
 		return ids, ""
 	}
-	kept = ids
+	kept = make([]int, 0, len(ids))
+	for _, id := range ids {
+		if !common.IsChannelExcludedOnNode(id) {
+			kept = append(kept, id)
+		}
+	}
+	if len(kept) == 0 {
+		return kept, dto.FilterNodeExclusion
+	}
 	for _, kind := range filterEvalOrder {
 		kindFilters := filtersByKind(filters, kind)
 		if len(kindFilters) == 0 {

@@ -86,6 +86,7 @@ import {
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
 import { PluginAuthorLink } from '../plugin-author-link'
+import { ChannelTestResultSection } from './channel-test-result-section'
 import { DetailRow, DetailSection } from './log-detail-layout'
 import { RequestDiagnosticsSection } from './request-diagnostics-section'
 
@@ -1199,6 +1200,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
             diagnostics={other.admin_info.request_diagnostics}
             endReason={other.stream_status?.end_reason}
           />
+        )}
+
+        {props.isAdmin && other?.admin_info?.channel_test && (
+          <ChannelTestResultSection result={other.admin_info.channel_test} />
         )}
 
         {/* Subscription billing details */}

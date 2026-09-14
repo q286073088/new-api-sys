@@ -17,7 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import type { UsageLog } from '../../data/schema'
@@ -149,5 +150,56 @@ describe('administrator request diagnostics', () => {
     renderDetails(true)
     expect(screen.queryByText('Request diagnostics')).not.toBeInTheDocument()
     expect(screen.getByText('blocked by channel policy')).toBeInTheDocument()
+  })
+})
+
+describe('channel test answers in administrator logs', () => {
+  const channelTest = {
+    prompt: 'Compute 17 × 23.\nExplain briefly.',
+    output: '391.\n<script>alert("not executable")</script>',
+  }
+
+  test('shows and copies the answer as plain text', async () => {
+    const user = userEvent.setup()
+    renderDetails(true, { admin_info: { channel_test: channelTest } })
+    const region = screen.getByRole('region', { name: 'Channel test result' })
+    expect(region).toHaveTextContent('Compute 17 × 23.')
+    expect(region).toHaveTextContent(channelTest.output.replace('\n', ' '))
+    expect(region.querySelector('script')).toBeNull()
+    await user.click(
+      within(region).getAllByRole('button', { name: 'Copy to clipboard' })[1]
+    )
+    expect(await navigator.clipboard.readText()).toBe(channelTest.output)
+  })
+
+  test('hides test questions and answers from non-admin users', () => {
+    renderDetails(false, { admin_info: { channel_test: channelTest } })
+    expect(
+      screen.queryByRole('region', { name: 'Channel test result' })
+    ).toBeNull()
+    expect(screen.queryByText('Model response')).toBeNull()
+  })
+
+  test('explains when a test returned no text', () => {
+    renderDetails(true, {
+      admin_info: { channel_test: { ...channelTest, output: '' } },
+    })
+    expect(screen.getByText('No text response was returned.')).toBeVisible()
+  })
+
+  test('marks truncated answers', () => {
+    renderDetails(true, {
+      admin_info: { channel_test: { ...channelTest, output_truncated: true } },
+    })
+    expect(
+      screen.getByText('Only the first 32 KiB of the response is stored.')
+    ).toBeVisible()
+  })
+
+  test('keeps ordinary logs without a channel test section', () => {
+    renderDetails(true)
+    expect(
+      screen.queryByRole('region', { name: 'Channel test result' })
+    ).toBeNull()
   })
 })

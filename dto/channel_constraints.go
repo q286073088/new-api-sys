@@ -37,6 +37,7 @@ type ChannelFilterKind string
 
 const (
 	FilterRequestPath        ChannelFilterKind = "request_path"
+	FilterNodeExclusion      ChannelFilterKind = "node_channel_excluded"
 	FilterTaskPluginIdentity ChannelFilterKind = "task_plugin_identity"
 )
 

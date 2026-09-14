@@ -8,8 +8,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -19,12 +21,239 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
+	"gorm.io/gorm"
 )
+
+func setupChannelProbeTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db := setupManageUserTestDB(t)
+	t.Setenv("LOG_SQL_DSN", "")
+	logDB := model.LOG_DB
+	require.NoError(t, model.InitLogDB()) // Initialize quoting for the tested dialect.
+	model.LOG_DB = logDB
+	return db
+}
+
+func TestChannelTestSettingsPersistence(t *testing.T) {
+	db := setupChannelProbeTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	monitor := operation_setting.GetMonitorSetting()
+	previous, previousOptions := *monitor, common.OptionMap
+	common.OptionMap = map[string]string{}
+	t.Cleanup(func() { *monitor, common.OptionMap = previous, previousOptions })
+	const prompt = "请计算 17×23，说明\"理由\"。\n保留换行 🧪"
+	require.NoError(t, model.UpdateOption(operation_setting.ChannelTestPromptOptionKey, prompt))
+	require.NoError(t, model.UpdateOption(operation_setting.ChannelTestMaxTokensOptionKey, "2048"))
+	assert.Equal(t, prompt, monitor.TestPrompt())
+	assert.Equal(t, uint(2048), monitor.TestMaxTokens())
+	for _, value := range []string{"0", "-1", "32769", "1.5", "invalid"} {
+		assert.Error(t, model.UpdateOption(operation_setting.ChannelTestMaxTokensOptionKey, value))
+	}
+	assert.Error(t, model.UpdateOption(operation_setting.ChannelTestPromptOptionKey, strings.Repeat("题", 20001)))
+	var saved []model.Option
+	require.NoError(t, db.Find(&saved).Error)
+	persisted := make(map[string]string)
+	for _, option := range saved {
+		persisted[option.Key] = option.Value
+	}
+	assert.Equal(t, prompt, persisted[operation_setting.ChannelTestPromptOptionKey])
+	assert.Equal(t, "2048", persisted[operation_setting.ChannelTestMaxTokensOptionKey])
+	monitor.ChannelTestPrompt, monitor.ChannelTestMaxTokens = "", 0
+	require.NoError(t, config.GlobalConfig.LoadFromDB(persisted))
+	assert.Equal(t, prompt, monitor.TestPrompt())
+	assert.Equal(t, uint(2048), monitor.TestMaxTokens())
+	require.NoError(t, model.UpdateOption(operation_setting.ChannelTestPromptOptionKey, " \r\n "))
+	assert.Equal(t, operation_setting.DefaultChannelTestPrompt, monitor.TestPrompt())
+}
+
+func TestChannelTestCapturesReadableOutput(t *testing.T) {
+	for _, tc := range []struct{ name, body, want string }{
+		{"chat", `{"choices":[{"message":{"content":"答案：391。"}}]}`, "答案：391。"},
+		{"chat parts", `{"choices":[{"message":{"content":[{"type":"text","text":"first"},{"type":"image_url","image_url":{"url":"private"}},{"type":"text","text":" second"}]}}]}`, "first second"},
+		{"responses", `{"output":[{"type":"reasoning","encrypted_content":"private"},{"type":"message","content":[{"type":"output_text","text":"391"}]}]}`, "391"},
+		{"claude", `{"content":[{"type":"thinking","thinking":"private"},{"type":"text","text":"391"}]}`, "391"},
+		{"gemini", `{"candidates":[{"content":{"parts":[{"thought":true,"text":"private"},{"text":"391"},{"inlineData":{"data":"private"}}]}}]}`, "391"},
+		{"legacy completion", `{"choices":[{"text":"391"}]}`, "391"},
+		{"refusal", `{"choices":[{"message":{"content":null,"refusal":"Cannot answer"}}]}`, "Cannot answer"},
+		{"chat stream", "data: {\"choices\":[{\"delta\":{\"content\":\"39\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"1\"}}]}\n\ndata: [DONE]\n", "391"},
+		{"responses stream once", "data: {\"type\":\"response.output_text.delta\",\"delta\":\"391\"}\n\ndata: {\"type\":\"response.output_text.done\",\"text\":\"391\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"391\"}]}]}}\n", "391"},
+		{"responses done without deltas", "data: {\"type\":\"response.output_text.done\",\"text\":\"391\"}\n", "391"},
+		{"claude interrupted stream", "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"39\"}}\n\ndata: {\"type\":\"error\",\"error\":{\"message\":\"failed\"}}\n", "39"},
+		{"gemini stream", "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"39\"}]}}]}\n\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"1\"}]}}]}\n", "391"},
+		{"no textual answer", `{"data":[{"embedding":[1,2,3]}]}`, ""},
+		{"malformed payload", "data: {invalid\n", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := captureChannelTestOutput("test prompt", []byte(tc.body))
+			assert.Equal(t, "test prompt", got.Prompt)
+			assert.Equal(t, tc.want, got.Output)
+			assert.False(t, got.OutputTruncated)
+		})
+	}
+	answer := strings.Repeat("答", 11000)
+	body := `{"choices":[{"message":{"content":` + common.GetJsonString(answer) + `}}]}`
+	got := captureChannelTestOutput("长回答", []byte(body))
+	assert.Equal(t, strings.Repeat("答", 10922), got.Output)
+	assert.True(t, got.OutputTruncated)
+	assert.True(t, utf8.ValidString(got.Output))
+	// The old 8 KiB diagnostic preview must not truncate a test answer.
+	answer = strings.Repeat("答", 3000)
+	body = "data: {\"choices\":[{\"delta\":{\"content\":" + common.GetJsonString(answer) + "}}]}\n\n"
+	got = captureChannelTestOutput("long stream", []byte(body))
+	assert.Equal(t, answer, got.Output)
+	assert.False(t, got.OutputTruncated)
+}
+
+func TestChannelTestPromptAndResponseLog(t *testing.T) {
+	previousTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = previousTimeout })
+	db := setupChannelProbeTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}))
+	withTieredBillingConfig(t, map[string]string{"gpt-4o-mini": "tiered_expr"}, map[string]string{"gpt-4o-mini": "p + c"})
+	monitor := operation_setting.GetMonitorSetting()
+	previous := *monitor
+	oldConsume, oldError, oldExport := common.LogConsumeEnabled, constant.ErrorLogEnabled, common.DataExportEnabled
+	common.LogConsumeEnabled, constant.ErrorLogEnabled, common.DataExportEnabled = true, true, false
+	t.Cleanup(func() {
+		*monitor = previous
+		common.LogConsumeEnabled, constant.ErrorLogEnabled, common.DataExportEnabled = oldConsume, oldError, oldExport
+	})
+	const prompt = "请计算 17×23，说明\"理由\"。\n保留换行 🧪"
+	const answer = "391。\n17×20 + 17×3 = 340 + 51。"
+	monitor.ChannelTestPrompt, monitor.ChannelTestMaxTokens = prompt, 2048
+	root := model.User{Username: "test-output-owner", Role: common.RoleRootUser, Status: common.UserStatusEnabled, Group: "default"}
+	require.NoError(t, db.Create(&root).Error)
+	answerJSON := common.GetJsonString(answer)
+	chatBody := `{"id":"test","model":"gpt-4o-mini","choices":[{"index":0,"message":{"role":"assistant","content":` + answerJSON + `},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}`
+	responsesBody := `{"id":"test","object":"response","model":"gpt-4o-mini","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":` + answerJSON + `}]}],"usage":{"input_tokens":10,"output_tokens":20,"total_tokens":30}}`
+	for _, tc := range []struct {
+		name, endpoint, promptPath, limitPath, body string
+		channelType, status                         int
+		stream                                      bool
+	}{
+		{"chat", "openai", "messages.0.content", "max_tokens", chatBody, constant.ChannelTypeOpenAI, 200, false},
+		{"chat stream", "openai", "messages.0.content", "max_tokens", "data: {\"id\":\"test\",\"model\":\"gpt-4o-mini\",\"choices\":[{\"index\":0,\"delta\":{\"content\":" + answerJSON + "},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20,\"total_tokens\":30}}\n\ndata: [DONE]\n\n", constant.ChannelTypeOpenAI, 200, true},
+		{"responses", "openai-response", "input.0.content", "max_output_tokens", responsesBody, constant.ChannelTypeOpenAI, 200, false},
+		{"responses stream", "openai-response", "input.0.content", "max_output_tokens", "data: {\"type\":\"response.output_text.delta\",\"delta\":" + answerJSON + "}\n\ndata: {\"type\":\"response.completed\",\"response\":" + responsesBody + "}\n\n", constant.ChannelTypeOpenAI, 200, true},
+		{"codex stream", "openai-response", "input.0.content", "", "data: {\"type\":\"response.completed\",\"response\":" + responsesBody + "}\n\n", constant.ChannelTypeCodex, 200, true},
+		{"claude", "anthropic", "messages.0.content", "max_tokens", `{"id":"test","type":"message","role":"assistant","model":"gpt-4o-mini","content":[{"type":"text","text":` + answerJSON + `}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":20}}`, constant.ChannelTypeAnthropic, 200, false},
+		{"gemini", "gemini", "contents.0.parts.0.text", "generationConfig.maxOutputTokens", `{"candidates":[{"content":{"role":"model","parts":[{"text":` + answerJSON + `}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":20,"totalTokenCount":30}}`, constant.ChannelTypeGemini, 200, false},
+		{"upstream failure", "openai", "messages.0.content", "max_tokens", `{"error":{"message":"temporary test failure","type":"server_error"}}`, constant.ChannelTypeOpenAI, 502, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
+				assert.Equal(t, prompt, gjson.GetBytes(body, tc.promptPath).String(), string(body))
+				if tc.limitPath != "" {
+					assert.EqualValues(t, 2048, gjson.GetBytes(body, tc.limitPath).Int(), string(body))
+				} else {
+					assert.False(t, gjson.GetBytes(body, "max_output_tokens").Exists(), "Codex does not accept an output limit")
+				}
+				contentType := "application/json"
+				if tc.stream {
+					contentType = "text/event-stream"
+				}
+				w.Header().Set("Content-Type", contentType)
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer upstream.Close()
+			channel := &model.Channel{Name: tc.name, Type: tc.channelType, Key: "test-key", BaseURL: common.GetPointer(upstream.URL), Models: "gpt-4o-mini", Group: "default", Status: common.ChannelStatusEnabled}
+			if tc.channelType == constant.ChannelTypeCodex {
+				channel.Key = `{"access_token":"test-key","account_id":"test-account"}`
+			}
+			require.NoError(t, db.Create(channel).Error)
+			result := testChannel(context.Background(), channel, root.Id, "gpt-4o-mini", tc.endpoint, tc.stream)
+			wantOutput, wantType := answer, model.LogTypeConsume
+			if tc.status == 200 {
+				require.NoError(t, result.localErr)
+				require.Nil(t, result.newAPIError)
+			} else {
+				require.Error(t, result.localErr)
+				wantOutput, wantType = "", model.LogTypeError
+			}
+			var logs []model.Log
+			require.NoError(t, model.LOG_DB.Where("channel_id = ?", channel.Id).Find(&logs).Error)
+			require.Len(t, logs, 1)
+			assert.Equal(t, wantType, logs[0].Type)
+			assert.Equal(t, prompt, gjson.Get(logs[0].Other, "admin_info.channel_test.prompt").String())
+			assert.Equal(t, wantOutput, gjson.Get(logs[0].Other, "admin_info.channel_test.output").String())
+			assert.False(t, gjson.Get(logs[0].Other, "channel_test").Exists())
+		})
+	}
+	userLogs, _, err := model.GetUserLogs(root.Id, model.LogTypeUnknown, 0, 0, "", "", 0, 100, "", "", "")
+	require.NoError(t, err)
+	require.NotEmpty(t, userLogs)
+	for _, entry := range userLogs {
+		assert.NotContains(t, entry.Other, "channel_test")
+	}
+}
+
+func TestNodeChannelExclusionsRouteAndSkipHealthChecks(t *testing.T) {
+	db := setupChannelProbeTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}))
+	oldMemory := common.MemoryCacheEnabled
+	t.Cleanup(func() {
+		common.MemoryCacheEnabled = oldMemory
+		require.NoError(t, common.ConfigureNodeExcludedChannels(""))
+		model.InitChannelCache()
+	})
+	var channels []*model.Channel
+	for i := range 3 {
+		priority := int64(3 - i)
+		channel := &model.Channel{Name: fmt.Sprintf("node-channel-%d", i), Type: constant.ChannelTypeOpenAI, Key: "key", Models: "gpt-4o-mini", Group: "default", Status: common.ChannelStatusEnabled, Priority: &priority}
+		require.NoError(t, db.Create(channel).Error)
+		require.NoError(t, db.Create(&model.Ability{ChannelId: channel.Id, Group: "default", Model: "gpt-4o-mini", Enabled: true, Priority: &priority}).Error)
+		channels = append(channels, channel)
+	}
+	require.NoError(t, common.ConfigureNodeExcludedChannels(fmt.Sprintf(" %d, %d ", channels[0].Id, channels[0].Id)))
+	for _, invalid := range []string{"0", "-1", "1,", "abc", "1;2", "999999999999999999999"} {
+		require.Error(t, common.ConfigureNodeExcludedChannels(invalid))
+		assert.True(t, common.IsChannelExcludedOnNode(channels[0].Id), "invalid config must not clear the previous exclusion")
+	}
+	common.MemoryCacheEnabled = true
+	model.InitChannelCache()
+	for _, memory := range []bool{false, true} {
+		common.MemoryCacheEnabled = memory
+		for retry := range 2 {
+			selected, err := model.GetRandomSatisfiedChannel("default", "gpt-4o-mini", retry, nil)
+			require.NoError(t, err)
+			require.NotNil(t, selected)
+			assert.Equal(t, channels[retry+1].Id, selected.Id, "memory=%t retry=%d", memory, retry)
+		}
+	}
+	ok, kind := model.ChannelSatisfiesFilters(channels[0], "gpt-4o-mini", nil)
+	assert.False(t, ok, "pinned and affinity channels must also be excluded")
+	assert.Equal(t, "node_channel_excluded", string(kind))
+	assert.Equal(t, channels[1:], selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModeScheduledAll))
+	assert.Equal(t, channelTestSummary{}, testChannelForHealthCheck(context.Background(), channels[0], 0, true, 1))
+	result := testChannel(context.Background(), channels[0], 0, "", "", false)
+	require.ErrorContains(t, result.localErr, "NODE_EXCLUDED_CHANNEL_IDS")
+	var stored model.Channel
+	require.NoError(t, db.First(&stored, channels[0].Id).Error)
+	assert.Equal(t, common.ChannelStatusEnabled, stored.Status, "local exclusion must not disable the shared channel")
+	require.NoError(t, common.ConfigureNodeExcludedChannels(""))
+	selected, err := model.GetRandomSatisfiedChannel("default", "gpt-4o-mini", 0, nil)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	assert.Equal(t, channels[0].Id, selected.Id, "a node without exclusions can still select the highest-priority channel")
+	require.NoError(t, common.ConfigureNodeExcludedChannels(fmt.Sprintf("%d,%d,%d", channels[0].Id, channels[1].Id, channels[2].Id)))
+	for _, memory := range []bool{false, true} {
+		common.MemoryCacheEnabled = memory
+		selected, err := model.GetRandomSatisfiedChannel("default", "gpt-4o-mini", 0, nil)
+		require.NoError(t, err)
+		assert.Nil(t, selected, "no fallback to excluded channels when the local pool is empty")
+	}
+}
 
 func TestChannelFailureKeywordMatching(t *testing.T) {
 	oldEnabled, oldKeywords := common.AutomaticDisableChannelEnabled, operation_setting.AutomaticDisableKeywordsToString()

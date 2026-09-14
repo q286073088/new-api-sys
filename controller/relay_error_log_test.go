@@ -292,6 +292,9 @@ func TestHTTPRelayRespectsModelRetryLimitsAndFinalLog(t *testing.T) {
 			adminLogs, count, err := model.GetAllLogs(model.LogTypeUnknown, 0, 0, "", "", "", 0, 10, 0, "", "http-retry-request", "")
 			require.NoError(t, err)
 			assert.EqualValues(t, tc.attempts, count)
+			for _, entry := range adminLogs {
+				assert.NotContains(t, entry.Other, "channel_test", "ordinary requests must not record model answers")
+			}
 			if tc.upstreamBody != "" {
 				for _, entry := range adminLogs {
 					if entry.Type != model.LogTypeError {

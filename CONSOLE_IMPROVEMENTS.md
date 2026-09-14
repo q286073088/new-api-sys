@@ -246,3 +246,62 @@ go build ./...
 ```
 
 以上专项测试、主模块构建、relaykit 独立构建以及预览环境的前端生产构建和 Linux 镜像构建通过。验证日志保存在忽略目录 `.local-tests/missing-usage/`；测试仅请求本地模拟上游。
+
+## 2026-09-14 渠道测试题与回答日志
+
+入口为「系统设置 → 模型与路由 → 路由可靠性 → 渠道健康检查」。新增「渠道测试题目」和「测试最大输出 Token」，手动测试、批量测试及定时测试共用配置。题目最多 20,000 个 Unicode 字符；留空时使用“9.11 和 9.9 哪个数更大？请简要说明理由。”。输出上限默认为 4,096，可设置 1–32,768，取代原来大多数聊天测试的 16 Token 上限。上游适配器仍遵守各自协议，例如 Codex 专用渠道继续移除其不支持的 `max_output_tokens`。
+
+在「使用记录」中打开“模型测试”的详情，管理员可查看和复制当次题目与模型回答。OpenAI Chat、Responses/Codex、Claude 和 Gemini 的文本结果会转换为可读文字；流式片段合并，Responses 的增量和最终快照不重复记录。失败测试同样写错误日志，并保留已收到的可读回答；健康检查触发自动禁用时不重复写同一条测试错误。
+
+回答保存在已有日志字段 `other.admin_info.channel_test` 中，只保留前 32 KiB，按 UTF-8 字符边界截断并显示提示。界面按纯文本展示，模型返回的 HTML 不会执行。只在渠道测试控制器中收集回答，普通请求不增加响应正文记录；用户日志接口继续移除整个 `admin_info`。嵌入、重排及图像测试保留各自原有探测请求，不记录向量、图片二进制或加密压缩内容。本功能供管理员观察回答，没有自动评分或按答案禁用渠道的规则。
+
+配置使用已有 `options` 表中的 `monitor_setting.channel_test_prompt` 和 `monitor_setting.channel_test_max_tokens`，没有数据库结构或迁移变更。界面复用现有设置表单、`Textarea`、`Input`、`DetailSection` 与 `CopyButton`；11 个新文案键已补齐七种语言。
+
+## 按国内、国外节点排除渠道
+
+当前版本新增环境变量 **`NODE_EXCLUDED_CHANNEL_IDS`**，填写当前节点不应使用的渠道 ID，以英文逗号分隔。它保存在各节点的进程配置中，不修改共享数据库的渠道状态。此前分支只有节点命名功能，没有渠道排除配置。
+
+例如渠道列表中的 ID `12`、`34` 只能在国外访问，在**国内节点**的 Docker Compose `new-api` 服务已有 `environment` 列表中追加：
+
+```yaml
+      - NODE_NAME=cn-1
+      - NODE_EXCLUDED_CHANNEL_IDS=12,34
+```
+
+**国外节点**保留全部渠道：
+
+```yaml
+      - NODE_NAME=overseas-1
+      - NODE_EXCLUDED_CHANNEL_IDS=
+```
+
+两边都先部署包含本次改动的镜像，再分别在对应机器重建应用容器以加载环境变量：
+
+```sh
+docker compose up -d --force-recreate new-api
+```
+
+`new-api` 是仓库默认服务名，自定义 Compose 使用实际应用服务名；不需要重建 MySQL 或 Redis。仅修改宿主机 `.env` 不一定会传入容器，需在 Compose 的 `environment`/`env_file` 中显式传入。`NODE_NAME` 用于标识节点，不参与排除匹配；系统也不会自动判断国内、国外。
+
+首次路由、重试、固定渠道和亲和渠道均执行本节点排除策略；内存缓存与数据库选渠路径一致。定时、批量健康检查跳过本节点排除的渠道，避免国内的网络不可达改变其全局启用状态；单独手动测试返回明确的本节点排除提示。当前节点所有候选渠道都被排除时返回无可用渠道，不回退到排除项。既有异步任务仍绑定原渠道，排除配置不迁移任务，也不代替异步任务轮询节点的网络配置。
+
+本轮验证使用真实 SQLite **3.50.4**、MySQL **8.0.45**、PostgreSQL **16.13** 及各自独立日志库，覆盖设置保存与重载、非法值拒绝、带引号/换行/中文/emoji 的题目、协议实际发送、回答持久化和用户接口过滤。节点用例覆盖优先级、重试、内存/数据库路径、全部排除、手动/自动测试跳过以及共享渠道状态不变；原来的 31 项 HTTP 转发/重试场景也在三种数据库上通过，并确认普通请求没有测试回答字段。未修改 relaykit 或数据库依赖。
+
+```powershell
+# TEST_MYSQL_DSN、TEST_POSTGRES_DSN 指向专用空测试实例。
+$env:TEST_MANAGE_USER_SEPARATE_LOG_DB = '1'
+foreach ($engine in @('sqlite', 'mysql', 'postgres')) {
+  $env:TEST_MANAGE_USER_DIALECT = $engine
+  go test ./controller -run '^(TestChannelTest.*|TestNodeChannelExclusionsRouteAndSkipHealthChecks|TestHTTPRelayRespectsModelRetryLimitsAndFinalLog)$' -count=1 -v
+}
+go test ./model -run '^(TestFilterCandidateIDs|TestChannelSatisfiesFilters|TestTaskPluginChannelSelectionFiltersBothCachePaths)$' -count=1
+go build ./...
+
+# web 目录
+bun run test src/features/system-settings/models/__tests__/retry-limits.test.tsx src/features/usage-logs/components/__tests__
+bun run typecheck
+bun run i18n:sync
+bun run build
+```
+
+前端 **10 个测试文件、77 项测试**通过，包含设置保存/恢复默认/校验、数字输入清空重填、回答复制、HTML 按文字显示、截断提示和管理员权限。9 个修改/新增 TypeScript 文件的 lint、保留版权头的格式检查、类型检查、Go 完整构建、前端生产构建和 Linux 预览镜像构建通过。验证日志位于忽略目录 `.local-tests/channel-tests/`；数据库与上游测试均使用独立本地环境。

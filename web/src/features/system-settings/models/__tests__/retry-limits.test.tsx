@@ -23,7 +23,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -62,6 +68,8 @@ function RoutingSettings() {
             'monitor_setting.auto_test_channel_minutes': 10,
             'monitor_setting.channel_test_concurrency': 1,
             'monitor_setting.channel_test_mode': 'passive_recovery',
+            'monitor_setting.channel_test_prompt': 'Original test question',
+            'monitor_setting.channel_test_max_tokens': 4096,
           }}
         />
       </SettingsPageProvider>
@@ -121,3 +129,74 @@ it.each(['2.5', '11', 'null'])(
     expect(api.put).not.toHaveBeenCalled()
   }
 )
+
+it('saves a multiline test question and its output limit', async () => {
+  const user = userEvent.setup()
+  renderSettings()
+  const prompt = await screen.findByRole('textbox', {
+    name: 'Channel test prompt',
+  })
+  await user.clear(prompt)
+  await user.click(prompt)
+  await user.paste('Compute 17 × 23.\nExplain "why". 🧪')
+  const limit = screen.getByRole('spinbutton', {
+    name: 'Test maximum output tokens',
+  })
+  await user.clear(limit)
+  await user.type(limit, '2048')
+  expect(prompt).toHaveValue('Compute 17 × 23.\nExplain "why". 🧪')
+  expect(limit).toHaveValue(2048)
+  await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+  await waitFor(() => expect(api.put).toHaveBeenCalledTimes(2))
+  expect(vi.mocked(api.put).mock.calls.map((call) => call[1])).toEqual([
+    {
+      key: 'monitor_setting.channel_test_prompt',
+      value: 'Compute 17 × 23.\nExplain "why". 🧪',
+    },
+    { key: 'monitor_setting.channel_test_max_tokens', value: 2048 },
+  ])
+})
+
+it('saves an empty question to restore the default test prompt', async () => {
+  renderSettings()
+  await userEvent.clear(
+    await screen.findByRole('textbox', { name: 'Channel test prompt' })
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+  await waitFor(() => expect(api.put).toHaveBeenCalledOnce())
+  expect(vi.mocked(api.put).mock.calls[0][1]).toEqual({
+    key: 'monitor_setting.channel_test_prompt',
+    value: '',
+  })
+})
+
+it('rejects an oversized test question before saving', async () => {
+  renderSettings()
+  const prompt = await screen.findByRole('textbox', {
+    name: 'Channel test prompt',
+  })
+  fireEvent.change(prompt, { target: { value: '题'.repeat(20001) } })
+  await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+  expect(
+    await screen.findByText('Test prompt must not exceed 20,000 characters')
+  ).toBeVisible()
+  expect(prompt).toHaveAttribute('aria-invalid', 'true')
+  expect(api.put).not.toHaveBeenCalled()
+})
+
+it('rejects a zero test output limit before saving', async () => {
+  renderSettings()
+  const limit = await screen.findByRole('spinbutton', {
+    name: 'Test maximum output tokens',
+  })
+  await userEvent.clear(limit)
+  await userEvent.type(limit, '0')
+  expect(limit).toHaveValue(0)
+  await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+  expect(
+    await screen.findByText(
+      'Test output limit must be between 1 and 32,768 tokens'
+    )
+  ).toBeVisible()
+  expect(api.put).not.toHaveBeenCalled()
+})

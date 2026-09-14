@@ -120,6 +120,20 @@ const createRoutingReliabilitySchema = (
             t('Channel test concurrency must be between 1 and 32')
           ),
         channel_test_mode: z.enum(channelTestModes),
+        channel_test_prompt: z
+          .string()
+          .refine(
+            (value) => [...value].length <= 20000,
+            t('Test prompt must not exceed 20,000 characters')
+          ),
+        channel_test_max_tokens: z.coerce
+          .number()
+          .int(t('Enter a positive integer'))
+          .min(1, t('Test output limit must be between 1 and 32,768 tokens'))
+          .max(
+            32768,
+            t('Test output limit must be between 1 and 32,768 tokens')
+          ),
       }),
     })
     .superRefine((values, ctx) => {
@@ -170,6 +184,8 @@ type RoutingReliabilitySectionProps = {
     'monitor_setting.auto_test_channel_minutes': number
     'monitor_setting.channel_test_concurrency': number
     'monitor_setting.channel_test_mode': ChannelTestMode
+    'monitor_setting.channel_test_prompt'?: string
+    'monitor_setting.channel_test_max_tokens'?: number
   }
 }
 
@@ -190,6 +206,8 @@ type NormalizedRoutingReliabilityValues = {
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.channel_test_concurrency': number
   'monitor_setting.channel_test_mode': ChannelTestMode
+  'monitor_setting.channel_test_prompt': string
+  'monitor_setting.channel_test_max_tokens': number
 }
 
 function normalizeChannelTestMode(value?: string): ChannelTestMode {
@@ -222,6 +240,11 @@ const buildFormDefaults = (
     channel_test_mode: normalizeChannelTestMode(
       defaults['monitor_setting.channel_test_mode']
     ),
+    channel_test_prompt: normalizeLineEndings(
+      defaults['monitor_setting.channel_test_prompt'] ?? ''
+    ),
+    channel_test_max_tokens:
+      defaults['monitor_setting.channel_test_max_tokens'] ?? 4096,
   },
 })
 
@@ -251,6 +274,11 @@ const normalizeDefaults = (
   'monitor_setting.channel_test_mode': normalizeChannelTestMode(
     defaults['monitor_setting.channel_test_mode']
   ),
+  'monitor_setting.channel_test_prompt': normalizeLineEndings(
+    defaults['monitor_setting.channel_test_prompt'] ?? ''
+  ).trim(),
+  'monitor_setting.channel_test_max_tokens':
+    defaults['monitor_setting.channel_test_max_tokens'] ?? 4096,
 })
 
 const normalizeFormValues = (
@@ -277,6 +305,11 @@ const normalizeFormValues = (
   'monitor_setting.channel_test_concurrency':
     values.monitor_setting.channel_test_concurrency,
   'monitor_setting.channel_test_mode': values.monitor_setting.channel_test_mode,
+  'monitor_setting.channel_test_prompt': normalizeLineEndings(
+    values.monitor_setting.channel_test_prompt
+  ).trim(),
+  'monitor_setting.channel_test_max_tokens':
+    values.monitor_setting.channel_test_max_tokens,
 })
 
 export function RoutingReliabilitySection({
@@ -465,7 +498,62 @@ export function RoutingReliabilitySection({
                 {t('Channel health checks')}
               </h4>
             </div>
+            <FormField
+              control={form.control}
+              name='monitor_setting.channel_test_prompt'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Channel test prompt')}</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      className='min-h-28'
+                      placeholder={t(
+                        'Enter a question to evaluate model responses'
+                      )}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Used for manual and scheduled text-model tests. Leave blank to compare 9.11 and 9.9. Test logs show the prompt and answer to administrators; regular requests do not store responses.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <div className='grid min-w-0 gap-6 lg:grid-cols-3'>
+              <FormField
+                control={form.control}
+                name='monitor_setting.channel_test_max_tokens'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Test maximum output tokens')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        max={32768}
+                        step={1}
+                        {...safeNumberFieldProps(field)}
+                        onChange={(event) =>
+                          field.onChange(
+                            event.target.value === ''
+                              ? ''
+                              : event.target.valueAsNumber
+                          )
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Allow enough tokens for the answer and any model reasoning. Default: 4,096.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name='monitor_setting.auto_test_channel_enabled'

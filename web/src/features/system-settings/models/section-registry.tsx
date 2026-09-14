@@ -88,6 +88,10 @@ const MODELS_SECTIONS = [
             settings['monitor_setting.channel_test_concurrency'],
           'monitor_setting.channel_test_mode':
             settings['monitor_setting.channel_test_mode'],
+          'monitor_setting.channel_test_prompt':
+            settings['monitor_setting.channel_test_prompt'],
+          'monitor_setting.channel_test_max_tokens':
+            settings['monitor_setting.channel_test_max_tokens'],
         }}
       />
     ),
