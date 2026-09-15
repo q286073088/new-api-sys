@@ -49,6 +49,7 @@ type FieldName =
   | 'channel'
   | 'token'
   | 'group'
+  | 'ip'
   | 'time'
 type LogField = {
   label: string
@@ -116,13 +117,19 @@ export function CommonLogMobileCard<TData>(props: {
       visible: displayable && props.cells.has('token_name') && !!group,
       sensitive: true,
     },
+    ip: {
+      label: t('IP Address'),
+      value: log.ip,
+      visible: props.cells.has('ip') && !!log.ip,
+      sensitive: true,
+    },
   }
   const selected = selectedField ? fields[selectedField] : undefined
   const activeField =
     selected?.visible && (!selected.sensitive || context.sensitiveVisible)
       ? selected
       : undefined
-  const metadata: FieldName[] = ['user', 'channel', 'token', 'group']
+  const metadata: FieldName[] = ['user', 'channel', 'token', 'group', 'ip']
   const visibleMetadata = metadata.filter((id) => fields[id].visible)
   const costCell = props.cells.get('quota')
   const contentCell = props.cells.get('content')

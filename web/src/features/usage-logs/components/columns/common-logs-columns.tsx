@@ -21,6 +21,7 @@ import { GitBranch, Sparkles, KeyRound } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { TruncatedCell } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -650,6 +651,26 @@ export function useCommonLogsColumns(
     size: 160,
   })
   columns.push(
+    {
+      accessorKey: 'ip',
+      header: t('IP Address'),
+      cell: function IpCell({ row }) {
+        const { sensitiveVisible } = useUsageLogsContext()
+        if (!row.original.ip) {
+          return <span className='text-muted-foreground'>—</span>
+        }
+
+        return (
+          <TruncatedCell
+            className='max-w-48 font-mono text-xs'
+            tabIndex={sensitiveVisible ? 0 : undefined}
+          >
+            {sensitiveVisible ? row.original.ip : '••••'}
+          </TruncatedCell>
+        )
+      },
+      size: 170,
+    },
     {
       accessorKey: 'model_name',
       header: t('Model'),
