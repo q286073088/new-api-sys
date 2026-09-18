@@ -166,7 +166,6 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.POST("/email", middleware.CriticalRateLimit(), controller.SendUserEmails)
 				adminRoute.GET("/invoice/admin", controller.AdminListInvoices)
 				adminRoute.POST("/invoice/:id/review", middleware.CriticalRateLimit(), controller.AdminReviewInvoice)
-				adminRoute.GET("/invoice/:id/file", controller.GetInvoiceFile)
 				adminRoute.PUT("/", controller.UpdateUser)
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)

@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { Resolver } from 'react-hook-form'
-import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import {
@@ -71,10 +70,18 @@ function parseUserIds(value: string): number[] {
 }
 
 export function InvoiceSettingsSection(props: { defaultValue: string }) {
-  const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const parsed = tryJsonParse<InvoiceSettings>(props.defaultValue)
-  const settings = parsed.success ? parsed.data : DEFAULT_SETTINGS
+  const rawSettings = parsed.success ? parsed.data : DEFAULT_SETTINGS
+  const settings: InvoiceSettings = {
+    enabled: rawSettings?.enabled === true,
+    all_users: rawSettings?.all_users === true,
+    user_ids: Array.isArray(rawSettings?.user_ids)
+      ? rawSettings.user_ids.filter(
+          (userId) => Number.isInteger(userId) && userId > 0
+        )
+      : [],
+  }
   const schema = z.object({
     enabled: z.boolean(),
     all_users: z.boolean(),
@@ -92,7 +99,7 @@ export function InvoiceSettingsSection(props: { defaultValue: string }) {
             ids.length <= 10000
           )
         },
-        t('Enter unique positive user IDs separated by commas.')
+        '请输入用逗号分隔的唯一正整数用户 ID。'
       ),
   })
   const { form, handleSubmit, isDirty, isSubmitting } =
@@ -116,7 +123,7 @@ export function InvoiceSettingsSection(props: { defaultValue: string }) {
     })
 
   return (
-    <SettingsSection title={t('Invoice settings')}>
+    <SettingsSection title='发票设置'>
       <FormNavigationGuard when={isDirty} />
       <Form {...form}>
         <SettingsForm onSubmit={handleSubmit}>
@@ -132,9 +139,9 @@ export function InvoiceSettingsSection(props: { defaultValue: string }) {
               render={({ field }) => (
                 <SettingsSwitchItem>
                   <SettingsSwitchContent>
-                    <FormLabel>{t('Enable invoice applications')}</FormLabel>
+                    <FormLabel>开启开票申请</FormLabel>
                     <FormDescription>
-                      {t('Controls whether users can submit invoice requests.')}
+                      控制用户是否可以提交开票申请。
                     </FormDescription>
                   </SettingsSwitchContent>
                   <FormControl>
@@ -152,11 +159,9 @@ export function InvoiceSettingsSection(props: { defaultValue: string }) {
               render={({ field }) => (
                 <SettingsSwitchItem>
                   <SettingsSwitchContent>
-                    <FormLabel>{t('Available to all users')}</FormLabel>
+                    <FormLabel>对所有用户开放</FormLabel>
                     <FormDescription>
-                      {t(
-                        'When disabled, only the listed user IDs can access invoice applications.'
-                      )}
+                      关闭后，仅列表中的用户 ID 可以使用开票申请。
                     </FormDescription>
                   </SettingsSwitchContent>
                   <FormControl>
@@ -173,16 +178,16 @@ export function InvoiceSettingsSection(props: { defaultValue: string }) {
               name='user_ids'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Allowed user IDs')}</FormLabel>
+                  <FormLabel>允许用户 ID</FormLabel>
                   <FormControl>
                     <Input
                       {...field}
-                      placeholder={t('1, 23, 456')}
+                      placeholder='1, 23, 456'
                       disabled={form.watch('all_users')}
                     />
                   </FormControl>
                   <FormDescription>
-                    {t('Separate user IDs with commas.')}
+                    用户 ID 请用逗号分隔。
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

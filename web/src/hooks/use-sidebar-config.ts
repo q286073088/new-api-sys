@@ -328,6 +328,7 @@ export function useSidebarConfig(navGroups: NavGroup[]): NavGroup[] {
                 return false
               }
             }
+            return true
           }),
         }))
         .filter((group) => group.items.length > 0), // Only show navigation groups with visible items

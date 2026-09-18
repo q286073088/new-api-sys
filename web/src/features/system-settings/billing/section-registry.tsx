@@ -57,7 +57,7 @@ const getGroupDefaults = (settings: BillingSettings) => ({
 const BILLING_SECTIONS = [
   {
     id: 'referrals',
-    titleKey: 'Referral Rebates',
+    titleKey: '邀请返利',
     build: (settings: BillingSettings) => (
       <ReferralSettingsSection
         defaultValue={settings.ReferralSetting}
@@ -70,7 +70,7 @@ const BILLING_SECTIONS = [
   },
   {
     id: 'invoices',
-    titleKey: 'Invoice settings',
+    titleKey: '发票设置',
     build: (settings: BillingSettings) => <InvoiceSettingsSection defaultValue={settings.InvoiceSetting} />,
   },
   {

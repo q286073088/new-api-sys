@@ -99,7 +99,7 @@ const createRoutingReliabilitySchema = (
         } catch {
           return false
         }
-      }, t('Use exact model names and whole retry counts from 0 to 10.')),
+      }, '请输入准确的模型名称和 0 到 10 之间的整数重试次数。'),
       ChannelDisableThreshold: numericString,
       AutomaticDisableChannelEnabled: z.boolean(),
       AutomaticEnableChannelEnabled: z.boolean(),
@@ -110,7 +110,7 @@ const createRoutingReliabilitySchema = (
         exclude_errors_enabled: z.boolean(),
         excluded_status_codes: z.string().refine((value) =>
           value.split(/[,\s]+/).filter(Boolean).every((code) => /^\d{3}$/.test(code) && Number(code) >= 100 && Number(code) <= 599),
-          t('Enter HTTP status codes separated by commas')),
+          '请输入用逗号分隔的 HTTP 状态码'),
       }),
       monitor_setting: z.object({
         channel_test_models: z.string().max(20000),
@@ -373,7 +373,7 @@ export function RoutingReliabilitySection({
   let channelTestModeDescription: string
   switch (channelTestMode) {
     case 'available_models':
-      channelTestModeDescription = t('Tests the configured models across enabled channels in priority order, stopping at the first success for each model.')
+      channelTestModeDescription = '按渠道优先级测试已配置的模型，某个模型首次测试成功后停止继续测试。'
       break
     case 'auto_ban_only':
       channelTestModeDescription = t(
@@ -462,26 +462,26 @@ export function RoutingReliabilitySection({
                 name='ModelRetryTimes'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Per-model retry limits')}</FormLabel>
+                    <FormLabel>按模型设置重试次数</FormLabel>
                     <FormControl>
                       <div
                         role='group'
-                        aria-label={t('Per-model retry limits')}
+                        aria-label='按模型设置重试次数'
                       >
                         <JsonEditor
                           value={field.value}
                           onChange={field.onChange}
                           valueType='any'
-                          keyLabel={t('Model Name')}
-                          keyPlaceholder={t('Model Name')}
-                          valueLabel={t('Retry Times')}
-                          valuePlaceholder={t('Retry Times')}
+                          keyLabel='模型名称'
+                          keyPlaceholder='模型名称'
+                          valueLabel='重试次数'
+                          valuePlaceholder='重试次数'
                         />
                       </div>
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Use the model name requested by the client. A model override limits retries across the entire request; 0 disables retries. Unlisted models keep the global and cross-group retry behavior.'
+                        '使用客户端请求中的模型名称。为模型单独设置的次数会限制整个请求的重试次数；设置为 0 表示不重试。未列出的模型继续使用全局和跨分组的重试规则。'
                       )}
                     </FormDescription>
                     <FormMessage />
@@ -632,7 +632,7 @@ export function RoutingReliabilitySection({
                         },
                         {
                           value: 'available_models',
-                          label: t('Test configured available models'),
+                          label: '测试配置的可用模型',
                         },
                       ]}
                       value={field.value}
@@ -655,7 +655,7 @@ export function RoutingReliabilitySection({
                             {t('Check channels awaiting recovery only')}
                           </SelectItem>
                           <SelectItem value='available_models'>
-                            {t('Test configured available models')}
+                            测试配置的可用模型
                           </SelectItem>
                         </SelectGroup>
                       </SelectContent>
@@ -673,11 +673,11 @@ export function RoutingReliabilitySection({
                 name='monitor_setting.channel_test_models'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Models to test')}</FormLabel>
+                    <FormLabel>待测试模型</FormLabel>
                     <FormControl>
-                      <Textarea {...field} rows={3} placeholder={t('One model per line')} />
+                        <Textarea {...field} rows={3} placeholder='每行填写一个模型名称' />
                     </FormControl>
-                    <FormDescription>{t('Used only in configured available model test mode.')}</FormDescription>
+                    <FormDescription>仅在“测试配置的可用模型”模式下生效。</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -771,8 +771,8 @@ export function RoutingReliabilitySection({
                 render={({ field }) => (
                   <SettingsSwitchItem>
                     <SettingsSwitchContent>
-                      <FormLabel>{t('Exclude error codes from model square')}</FormLabel>
-                      <FormDescription>{t('Failed requests with these status codes will not affect model square metrics.')}</FormDescription>
+                      <FormLabel>从模型广场排除错误码</FormLabel>
+                      <FormDescription>包含这些状态码的失败请求不会影响模型广场统计。</FormDescription>
                     </SettingsSwitchContent>
                     <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                   </SettingsSwitchItem>
@@ -783,7 +783,7 @@ export function RoutingReliabilitySection({
                 name='perf_metrics_setting.excluded_status_codes'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Excluded HTTP status codes')}</FormLabel>
+                    <FormLabel>要排除的 HTTP 状态码</FormLabel>
                     <FormControl><Input {...field} placeholder='400,502,524' /></FormControl>
                     <FormMessage />
                   </FormItem>
