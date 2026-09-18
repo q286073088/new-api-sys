@@ -27,10 +27,12 @@ import {
   FormControl,
   FormDescription,
   FormField,
+  FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
 import { Switch } from '@/components/ui/switch'
+import { Input } from '@/components/ui/input'
 
 import {
   SettingsControlChildren,
@@ -57,13 +59,26 @@ const headerNavSchema = z.object({
   rankingsRequireAuth: z.boolean(),
   docs: z.boolean(),
   about: z.boolean(),
+  customerServiceQQ: z.string(),
+  customerServiceQRCode: z.string(),
 })
 
 type HeaderNavFormValues = z.infer<typeof headerNavSchema>
+type HeaderNavBooleanKey =
+  | 'home'
+  | 'console'
+  | 'pricingEnabled'
+  | 'pricingRequireAuth'
+  | 'rankingsEnabled'
+  | 'rankingsRequireAuth'
+  | 'docs'
+  | 'about'
 
 type HeaderNavigationSectionProps = {
   config: HeaderNavModulesConfig
   initialSerialized: string
+  initialCustomerServiceQQ: string
+  initialCustomerServiceQRCode: string
 }
 
 const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
@@ -95,15 +110,26 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     config.about === undefined
       ? HEADER_NAV_DEFAULT.about
       : Boolean(config.about),
+  customerServiceQQ: '',
+  customerServiceQRCode: '',
 })
 
 export function HeaderNavigationSection({
   config,
   initialSerialized,
+  initialCustomerServiceQQ,
+  initialCustomerServiceQRCode,
 }: HeaderNavigationSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
-  const formDefaults = useMemo(() => toFormValues(config), [config])
+  const formDefaults = useMemo(
+    () => ({
+      ...toFormValues(config),
+      customerServiceQQ: initialCustomerServiceQQ,
+      customerServiceQRCode: initialCustomerServiceQRCode,
+    }),
+    [config, initialCustomerServiceQQ, initialCustomerServiceQRCode]
+  )
 
   const form = useForm<HeaderNavFormValues>({
     resolver: zodResolver(headerNavSchema),
@@ -134,14 +160,24 @@ export function HeaderNavigationSection({
     }
 
     const serialized = serializeHeaderNavModules(payload)
-    if (serialized === initialSerialized) {
-      return
+    if (serialized !== initialSerialized) {
+      await updateOption.mutateAsync({
+        key: 'HeaderNavModules',
+        value: serialized,
+      })
     }
-
-    await updateOption.mutateAsync({
-      key: 'HeaderNavModules',
-      value: serialized,
-    })
+    if (values.customerServiceQQ !== initialCustomerServiceQQ) {
+      await updateOption.mutateAsync({
+        key: 'CustomerServiceQQ',
+        value: values.customerServiceQQ.trim(),
+      })
+    }
+    if (values.customerServiceQRCode !== initialCustomerServiceQRCode) {
+      await updateOption.mutateAsync({
+        key: 'CustomerServiceQRCode',
+        value: values.customerServiceQRCode.trim(),
+      })
+    }
   }
 
   const resetToDefault = () => {
@@ -149,7 +185,7 @@ export function HeaderNavigationSection({
   }
 
   const simpleModules: Array<{
-    key: keyof HeaderNavFormValues
+    key: HeaderNavBooleanKey
     title: string
     description: string
   }> = [
@@ -176,8 +212,8 @@ export function HeaderNavigationSection({
   ]
 
   const accessModules: Array<{
-    enabledKey: keyof HeaderNavFormValues
-    requireAuthKey: keyof HeaderNavFormValues
+    enabledKey: HeaderNavBooleanKey
+    requireAuthKey: HeaderNavBooleanKey
     requireAuthDependsOn: 'pricingEnabled' | 'rankingsEnabled'
     title: string
     description: string
@@ -242,6 +278,44 @@ export function HeaderNavigationSection({
                 )}
               />
             ))}
+          </div>
+
+          <div className='grid gap-4 md:grid-cols-2'>
+            <FormField
+              control={form.control}
+              name='customerServiceQQ'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Customer service QQ')}</FormLabel>
+                  <FormControl>
+                    <Input placeholder={t('Enter QQ number')} {...field} />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Displayed to users in the contact support dialog')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='customerServiceQRCode'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Customer service QR code')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder='https://example.com/customer-service-qr.png'
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Image URL shown when users contact support')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
 
           <div className='grid gap-4 lg:grid-cols-2'>

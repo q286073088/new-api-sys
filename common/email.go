@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -10,6 +11,13 @@ import (
 	"strings"
 	"time"
 )
+
+// EmailAttachment is an attachment included in an outgoing HTML email.
+type EmailAttachment struct {
+	Filename    string
+	ContentType string
+	Data        []byte
+}
 
 func generateMessageID() (string, error) {
 	split := strings.Split(SMTPFrom, "@")
@@ -85,6 +93,10 @@ func newSMTPClient(addr string) (*smtp.Client, error) {
 }
 
 func SendEmail(subject string, receiver string, content string) error {
+	return SendEmailWithAttachments(subject, receiver, content, nil)
+}
+
+func SendEmailWithAttachments(subject string, receiver string, content string, attachments []EmailAttachment) error {
 	if SMTPFrom == "" { // for compatibility
 		SMTPFrom = SMTPAccount
 	}
@@ -96,13 +108,41 @@ func SendEmail(subject string, receiver string, content string) error {
 		return fmt.Errorf("SMTP 服务器未配置")
 	}
 	encodedSubject := fmt.Sprintf("=?UTF-8?B?%s?=", base64.StdEncoding.EncodeToString([]byte(subject)))
-	mail := []byte(fmt.Sprintf("To: %s\r\n"+
-		"From: %s <%s>\r\n"+
-		"Subject: %s\r\n"+
-		"Date: %s\r\n"+
-		"Message-ID: %s\r\n"+ // 添加 Message-ID 头
-		"Content-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n",
-		receiver, SystemName, SMTPFrom, encodedSubject, time.Now().Format(time.RFC1123Z), id, content))
+	var body bytes.Buffer
+	body.WriteString(fmt.Sprintf("To: %s\r\nFrom: %s <%s>\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: %s\r\n",
+		receiver, SystemName, SMTPFrom, encodedSubject, time.Now().Format(time.RFC1123Z), id))
+	if len(attachments) == 0 {
+		body.WriteString("Content-Type: text/html; charset=UTF-8\r\n\r\n")
+		body.WriteString(content)
+		body.WriteString("\r\n")
+	} else {
+		boundary := "newapi-" + GetRandomString(24)
+		body.WriteString(fmt.Sprintf("MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", boundary))
+		body.WriteString("--" + boundary + "\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n")
+		body.WriteString(content)
+		body.WriteString("\r\n")
+		for _, attachment := range attachments {
+			if len(attachment.Data) == 0 || attachment.Filename == "" {
+				continue
+			}
+			contentType := attachment.ContentType
+			if contentType == "" {
+				contentType = "application/octet-stream"
+			}
+			body.WriteString(fmt.Sprintf("--%s\r\nContent-Type: %s\r\nContent-Disposition: attachment; filename=\"%s\"\r\nContent-Transfer-Encoding: base64\r\n\r\n", boundary, contentType, strings.ReplaceAll(strings.ReplaceAll(attachment.Filename, "\"", ""), "\r", "")))
+			encoded := make([]byte, base64.StdEncoding.EncodedLen(len(attachment.Data)))
+			base64.StdEncoding.Encode(encoded, attachment.Data)
+			for len(encoded) > 76 {
+				body.Write(encoded[:76])
+				body.WriteString("\r\n")
+				encoded = encoded[76:]
+			}
+			body.Write(encoded)
+			body.WriteString("\r\n")
+		}
+		body.WriteString("--" + boundary + "--\r\n")
+	}
+	mail := body.Bytes()
 	auth := getSMTPAuth()
 	addr := fmt.Sprintf("%s:%d", SMTPServer, SMTPPort)
 	to := strings.Split(receiver, ";")

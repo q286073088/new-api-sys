@@ -18,6 +18,7 @@ type EmailNotification struct {
 	ID          int
 	EventKey    string `gorm:"type:varchar(160);uniqueIndex"`
 	UserID      int
+	InvoiceID   int    `gorm:"index"`
 	Email       string `gorm:"type:varchar(320)"`
 	Subject     string `gorm:"type:varchar(255)"`
 	Content     string `gorm:"type:text"`
@@ -66,6 +67,14 @@ func HasDueEmailNotifications() bool {
 // DispatchEmailNotifications claims each row before delivery. A lease allows
 // another worker to resume after a crash without duplicate live deliveries.
 func DispatchEmailNotifications(ctx context.Context, now int64, send func(subject, receiver, content string) error) (EmailDeliverySummary, error) {
+	return dispatchEmailNotifications(ctx, now, send, nil)
+}
+
+func DispatchEmailNotificationsWithAttachments(ctx context.Context, now int64, send func(subject, receiver, content string) error, sendWithAttachments func(subject, receiver, content string, attachments []common.EmailAttachment) error) (EmailDeliverySummary, error) {
+	return dispatchEmailNotifications(ctx, now, send, sendWithAttachments)
+}
+
+func dispatchEmailNotifications(ctx context.Context, now int64, send func(subject, receiver, content string) error, sendWithAttachments func(subject, receiver, content string, attachments []common.EmailAttachment) error) (EmailDeliverySummary, error) {
 	summary := EmailDeliverySummary{}
 	var messages []EmailNotification
 	if err := DB.WithContext(ctx).Where("status IN ? AND available_at <= ?", []string{"pending", "sending"}, now).
@@ -93,18 +102,37 @@ func DispatchEmailNotifications(ctx context.Context, now int64, send func(subjec
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return summary, err
 		}
-		// Never deliver an old queued message to a removed or changed address.
-		if errors.Is(err, gorm.ErrRecordNotFound) || strings.TrimSpace(user.Email) != message.Email {
+		// Invoice emails intentionally use the address entered on the application;
+		// all other notifications must still follow the user's current address.
+		if errors.Is(err, gorm.ErrRecordNotFound) || (message.InvoiceID == 0 && strings.TrimSpace(user.Email) != message.Email) {
 			status, sentAt = "skipped", 0
 			summary.Skipped++
-		} else if err := send(message.Subject, message.Email, message.Content); err != nil {
-			status, sentAt = "pending", 0
-			if message.Attempts+1 >= 5 {
-				status = "failed"
-			}
-			summary.Failed++
 		} else {
-			summary.Sent++
+			var deliveryErr error
+			if message.InvoiceID > 0 && sendWithAttachments != nil {
+				var file InvoiceFile
+				if fileErr := DB.WithContext(ctx).First(&file, message.InvoiceID).Error; fileErr != nil {
+					deliveryErr = fileErr
+				} else {
+					filename := "invoice.pdf"
+					var application InvoiceApplication
+					if appErr := DB.WithContext(ctx).Select("file_name").First(&application, message.InvoiceID).Error; appErr == nil && strings.TrimSpace(application.FileName) != "" {
+						filename = strings.TrimSpace(application.FileName)
+					}
+					deliveryErr = sendWithAttachments(message.Subject, message.Email, message.Content, []common.EmailAttachment{{Filename: filename, ContentType: file.ContentType, Data: file.Data}})
+				}
+			} else {
+				deliveryErr = send(message.Subject, message.Email, message.Content)
+			}
+			if deliveryErr != nil {
+				status, sentAt = "pending", 0
+				if message.Attempts+1 >= 5 {
+					status = "failed"
+				}
+				summary.Failed++
+			} else {
+				summary.Sent++
+			}
 		}
 		// Delivery may finish while the scheduler's context is cancelled. Persist
 		// the SMTP acknowledgement instead of sending the accepted message again.

@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { ConfigDrawer } from '@/components/config-drawer'
 import { ConsoleAnnouncementDialog } from '@/components/console-announcement-dialog'
+import { CustomerServiceDialog } from '@/components/customer-service-dialog'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
@@ -128,6 +129,7 @@ export function AppHeader({
               </div>
             )}
             {showSearch && <Search />}
+            <CustomerServiceDialog />
             {showNotifications && (
               <NotificationPopover
                 open={notifications.popoverOpen}

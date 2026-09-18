@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useNavigate } from '@tanstack/react-router'
-import { User, Wallet, LogOut, Settings, ShieldCheck } from 'lucide-react'
+import {
+  User,
+  Wallet,
+  LogOut,
+  Settings,
+  ShieldCheck,
+  Share2,
+} from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -32,7 +39,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import useDialogState from '@/hooks/use-dialog'
-import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
+import {
+  useIsReferralEnabled,
+  useIsSidebarModuleVisible,
+} from '@/hooks/use-sidebar-config'
 import { useUserDisplay } from '@/hooks/use-user-display'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { ROLE } from '@/lib/roles'
@@ -49,6 +59,8 @@ export function ProfileDropdown() {
   const isSuperAdmin = user?.role === ROLE.SUPER_ADMIN
   const isWalletVisible = useIsSidebarModuleVisible('/wallet')
   const isSecurityVisible = useIsSidebarModuleVisible('/security')
+  const isReferralVisible =
+    useIsSidebarModuleVisible('/referrals') && useIsReferralEnabled()
   const avatarName = user?.username || displayName
   const avatarFallback = getUserAvatarFallback(avatarName)
   const avatarFallbackStyle = useMemo(
@@ -119,6 +131,13 @@ export function ProfileDropdown() {
             <DropdownMenuItem onClick={() => navigate({ to: '/wallet' })}>
               <Wallet className='size-4' />
               {t('Wallet')}
+            </DropdownMenuItem>
+          )}
+
+          {isReferralVisible && (
+            <DropdownMenuItem onClick={() => navigate({ to: '/referrals' })}>
+              <Share2 className='size-4' />
+              {t('Referral Rewards')}
             </DropdownMenuItem>
           )}
 

@@ -27,6 +27,7 @@ import {
 const defaultBillingSettings: BillingSettings = {
   ReferralSetting:
     '{"enabled":false,"level1_percent":5,"level2_percent":0,"delay_days":3}',
+  InvoiceSetting: '{"enabled":false,"all_users":false,"user_ids":[]}',
   QuotaForNewUser: 0,
   PreConsumedQuota: 0,
   QuotaForInviter: 0,

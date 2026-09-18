@@ -60,6 +60,33 @@ func GetAllEnableAbilities() []Ability {
 	return abilities
 }
 
+// GetAvailableModelTestChannels covers every enabled group, keeping each
+// channel once. The eligibility predicate is shared with normal routing.
+func GetAvailableModelTestChannels(modelName string) ([]*Channel, error) {
+	var abilities []Ability
+	if err := DB.Where("model = ? AND enabled = ?", modelName, true).
+		Order("priority DESC, weight DESC, channel_id ASC").Find(&abilities).Error; err != nil {
+		return nil, err
+	}
+	abilities = filterAbilitiesByConstraints(abilities, modelName, nil)
+	channels := make([]*Channel, 0, len(abilities))
+	seen := make(map[int]bool)
+	for _, ability := range abilities {
+		if seen[ability.ChannelId] {
+			continue
+		}
+		seen[ability.ChannelId] = true
+		channel, err := GetChannelById(ability.ChannelId, true)
+		if err != nil {
+			return nil, err
+		}
+		if channel.Status == common.ChannelStatusEnabled {
+			channels = append(channels, channel)
+		}
+	}
+	return channels, nil
+}
+
 func getPriority(group string, model string, retry int) (int, error) {
 
 	var priorities []int

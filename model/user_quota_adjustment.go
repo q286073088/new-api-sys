@@ -23,7 +23,20 @@ type UserQuotaAdjustment struct {
 	After    int
 }
 
-func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuotaAdjustment, error) {
+type QuotaCreditOptions struct {
+	Gift            bool
+	PaidAmountCents int64
+}
+
+func AdjustUserQuota(userID, operatorRole int, mode string, value int, options ...QuotaCreditOptions) (*UserQuotaAdjustment, error) {
+	credit := QuotaCreditOptions{}
+	if len(options) > 0 {
+		credit = options[0]
+	}
+	isGift := credit.Gift
+	if credit.PaidAmountCents < 0 || credit.PaidAmountCents > 1000000000000 {
+		return nil, ErrInvalidUserQuotaAdjustment
+	}
 	if userID <= 0 || (mode != "add" && mode != "subtract" && mode != "override") {
 		return nil, ErrInvalidUserQuotaAdjustment
 	}
@@ -70,11 +83,24 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuo
 				PaymentMethod: PaymentMethodAdmin, PaymentProvider: PaymentProviderAdmin,
 				CreateTime: now, CompleteTime: now, Status: common.TopUpStatusSuccess,
 				ReferralBaseQuota: &value,
+				IsGift:            isGift,
+			}
+			if !isGift {
+				topUp.InvoiceAmountCents = &credit.PaidAmountCents
+				topUp.Money = float64(credit.PaidAmountCents) / 100
+			}
+			if isGift {
+				zero := 0
+				topUp.ReferralBaseQuota = &zero
 			}
 			if err := tx.Create(&topUp).Error; err != nil {
 				return err
 			}
-			if err := creditTopUpWithReferral(tx, &topUp, value, nil); err != nil {
+			if isGift {
+				if err := creditTopUpQuota(tx, user.Id, value, nil); err != nil {
+					return err
+				}
+			} else if err := creditTopUpWithReferral(tx, &topUp, value, nil); err != nil {
 				return err
 			}
 		} else if after != user.Quota {

@@ -122,6 +122,11 @@ export function SidebarModulesCard() {
           description: t('Balance and top-up management'),
         },
         {
+          key: 'invoice',
+          title: t('Invoice Center'),
+          description: t('Apply for and download invoices'),
+        },
+        {
           key: 'personal',
           title: t('Personal Settings'),
           description: t('Personal info settings'),
@@ -130,6 +135,11 @@ export function SidebarModulesCard() {
           key: 'security',
           title: t('Security & Access'),
           description: t('Manage your security settings and account access'),
+        },
+        {
+          key: 'referral',
+          title: t('Referral Rewards'),
+          description: t('View referral earnings and rebate history'),
         },
       ],
     },

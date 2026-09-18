@@ -14,6 +14,7 @@ type Sample struct {
 	TtftMs       int64
 	HasTtft      bool
 	Success      bool
+	StatusCode   int
 	OutputTokens int64
 	GenerationMs int64
 }

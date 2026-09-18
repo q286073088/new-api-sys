@@ -44,7 +44,7 @@ func manageUserQuota(c *gin.Context, req ManageRequest) {
 		markAuditLogged(c)
 	}()
 
-	adjustment, err := model.AdjustUserQuota(req.Id, c.GetInt("role"), req.Mode, req.Value)
+	adjustment, err := model.AdjustUserQuota(req.Id, c.GetInt("role"), req.Mode, req.Value, model.QuotaCreditOptions{Gift: req.Gift, PaidAmountCents: req.PaidAmountCents})
 	if err != nil {
 		switch {
 		case errors.Is(err, model.ErrInvalidUserQuotaAdjustment):
@@ -75,6 +75,7 @@ func manageUserQuota(c *gin.Context, req ManageRequest) {
 	params["to"] = adjustment.After
 	if req.Mode != "override" {
 		params["quota"] = req.Value
+		params["gift"] = req.Gift
 	}
 	success = true
 	operation := model.AuditOperation{Action: action, Params: params}

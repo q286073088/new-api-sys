@@ -24,6 +24,7 @@ import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -45,6 +46,8 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const [mode, setMode] = useState<QuotaAdjustMode>('add')
   const [amount, setAmount] = useState('')
   const [loading, setLoading] = useState(false)
+  const [gift, setGift] = useState(false)
+  const [paidAmount, setPaidAmount] = useState('')
 
   const { meta: currencyMeta } = getCurrencyDisplay()
   const currencyLabel = getCurrencyLabel()
@@ -83,11 +86,17 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
         action: 'add_quota',
         mode,
         value: mode === 'override' ? value : Math.abs(value),
+        gift: mode === 'add' ? gift : false,
+        paid_amount_cents:
+          mode === 'add' && !gift && !tokensOnly
+            ? Math.max(0, Math.round((Number.parseFloat(paidAmount) || 0) * 100))
+            : 0,
       })
       if (result.success) {
         toast.success(t('Quota adjusted successfully'))
         setAmount('')
         setMode('add')
+        setGift(false)
         props.onOpenChange(false)
         props.onSuccess()
       } else {
@@ -103,6 +112,8 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const handleCancel = () => {
     setAmount('')
     setMode('add')
+    setGift(false)
+    setPaidAmount('')
     props.onOpenChange(false)
   }
 
@@ -148,6 +159,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
                 onClick={() => {
                   setMode(m)
                   setAmount('')
+                  setPaidAmount('')
                 }}
               >
                 {m === 'add' && t('Add')}
@@ -158,6 +170,28 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
           </div>
         </div>
 
+        {mode === 'add' && (
+          <div className='flex items-center justify-between gap-3'>
+            <div>
+              <Label htmlFor='quota-gift'>{t('Gift credit')}</Label>
+              <p className='text-muted-foreground text-xs'>{t('Gift credit does not trigger referral rewards or invoice eligibility.')}</p>
+            </div>
+            <Switch id='quota-gift' checked={gift} onCheckedChange={setGift} />
+          </div>
+        )}
+        {mode === 'add' && !gift && !tokensOnly && (
+          <div className='space-y-2'>
+            <Label>{t('Actual paid amount')} ({currencyLabel})</Label>
+            <Input
+              type='number'
+              min={0}
+              step={0.01}
+              placeholder={t('Optional, used for invoice and referral base')}
+              value={paidAmount}
+              onChange={(e) => setPaidAmount(e.target.value)}
+            />
+          </div>
+        )}
         <div className='space-y-2'>
           <Label>
             {t('Amount')} ({currencyLabel})

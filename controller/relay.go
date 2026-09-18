@@ -263,6 +263,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			newAPIError = relayHandler(c, relayInfo)
 		}
 		sample := perfmetrics.CaptureRelaySample(relayInfo, newAPIError == nil, relayInfo.PerformanceAttempt.OutputTokens, time.Now())
+		if newAPIError != nil {
+			sample.StatusCode = newAPIError.StatusCode
+		}
 		finalPerformanceSample = &sample
 
 		if newAPIError == nil {

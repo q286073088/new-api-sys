@@ -340,6 +340,8 @@ func migrateDB() error {
 		&User{},
 		&AnnouncementView{},
 		&EmailNotification{},
+		&InvoiceApplication{},
+		&InvoiceFile{},
 		&UserSession{},
 		&AuthFlow{},
 		&ExternalIdentityClaim{},

@@ -35,7 +35,7 @@ func (emailDeliveryHandler) Enabled() bool {
 func (emailDeliveryHandler) Interval() time.Duration { return time.Minute }
 func (emailDeliveryHandler) NewPayload() any         { return nil }
 func (emailDeliveryHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
-	summary, err := model.DispatchEmailNotifications(ctx, common.GetTimestamp(), common.SendEmail)
+	summary, err := model.DispatchEmailNotificationsWithAttachments(ctx, common.GetTimestamp(), common.SendEmail, common.SendEmailWithAttachments)
 	status := model.SystemTaskStatusSucceeded
 	if err != nil {
 		status = model.SystemTaskStatusFailed

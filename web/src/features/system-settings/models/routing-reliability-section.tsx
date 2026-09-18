@@ -68,6 +68,7 @@ const channelTestModes = [
   'scheduled_all',
   'auto_ban_only',
   'passive_recovery',
+  'available_models',
 ] as const
 type ChannelTestMode = (typeof channelTestModes)[number]
 const MAX_CHANNEL_TEST_CONCURRENCY = 32
@@ -105,7 +106,14 @@ const createRoutingReliabilitySchema = (
       AutomaticDisableKeywords: z.string(),
       AutomaticDisableStatusCodes: z.string(),
       AutomaticRetryStatusCodes: z.string(),
+      perf_metrics_setting: z.object({
+        exclude_errors_enabled: z.boolean(),
+        excluded_status_codes: z.string().refine((value) =>
+          value.split(/[,\s]+/).filter(Boolean).every((code) => /^\d{3}$/.test(code) && Number(code) >= 100 && Number(code) <= 599),
+          t('Enter HTTP status codes separated by commas')),
+      }),
       monitor_setting: z.object({
+        channel_test_models: z.string().max(20000),
         auto_test_channel_enabled: z.boolean(),
         auto_test_channel_minutes: z.coerce
           .number()
@@ -137,6 +145,9 @@ const createRoutingReliabilitySchema = (
       }),
     })
     .superRefine((values, ctx) => {
+      if (values.monitor_setting.channel_test_mode === 'available_models' && !values.monitor_setting.channel_test_models.trim()) {
+        ctx.addIssue({ code: 'custom', path: ['monitor_setting', 'channel_test_models'], message: t('Enter at least one model') })
+      }
       const disableParsed = parseHttpStatusCodeRules(
         values.AutomaticDisableStatusCodes
       )
@@ -186,6 +197,9 @@ type RoutingReliabilitySectionProps = {
     'monitor_setting.channel_test_mode': ChannelTestMode
     'monitor_setting.channel_test_prompt'?: string
     'monitor_setting.channel_test_max_tokens'?: number
+    'monitor_setting.channel_test_models'?: string
+    'perf_metrics_setting.exclude_errors_enabled'?: boolean
+    'perf_metrics_setting.excluded_status_codes'?: string
   }
 }
 
@@ -208,10 +222,13 @@ type NormalizedRoutingReliabilityValues = {
   'monitor_setting.channel_test_mode': ChannelTestMode
   'monitor_setting.channel_test_prompt': string
   'monitor_setting.channel_test_max_tokens': number
+  'monitor_setting.channel_test_models': string
+  'perf_metrics_setting.exclude_errors_enabled': boolean
+  'perf_metrics_setting.excluded_status_codes': string
 }
 
 function normalizeChannelTestMode(value?: string): ChannelTestMode {
-  if (value === 'auto_ban_only' || value === 'passive_recovery') {
+  if (value === 'auto_ban_only' || value === 'passive_recovery' || value === 'available_models') {
     return value
   }
   return 'scheduled_all'
@@ -230,7 +247,12 @@ const buildFormDefaults = (
   ),
   AutomaticDisableStatusCodes: defaults.AutomaticDisableStatusCodes ?? '',
   AutomaticRetryStatusCodes: defaults.AutomaticRetryStatusCodes ?? '',
+  perf_metrics_setting: {
+    exclude_errors_enabled: defaults['perf_metrics_setting.exclude_errors_enabled'] ?? false,
+    excluded_status_codes: defaults['perf_metrics_setting.excluded_status_codes'] ?? '',
+  },
   monitor_setting: {
+    channel_test_models: defaults['monitor_setting.channel_test_models'] ?? '',
     auto_test_channel_enabled:
       defaults['monitor_setting.auto_test_channel_enabled'],
     auto_test_channel_minutes:
@@ -279,6 +301,9 @@ const normalizeDefaults = (
   ).trim(),
   'monitor_setting.channel_test_max_tokens':
     defaults['monitor_setting.channel_test_max_tokens'] ?? 4096,
+  'monitor_setting.channel_test_models': (defaults['monitor_setting.channel_test_models'] ?? '').trim(),
+  'perf_metrics_setting.exclude_errors_enabled': defaults['perf_metrics_setting.exclude_errors_enabled'] ?? false,
+  'perf_metrics_setting.excluded_status_codes': defaults['perf_metrics_setting.excluded_status_codes'] ?? '',
 })
 
 const normalizeFormValues = (
@@ -310,6 +335,9 @@ const normalizeFormValues = (
   ).trim(),
   'monitor_setting.channel_test_max_tokens':
     values.monitor_setting.channel_test_max_tokens,
+  'monitor_setting.channel_test_models': values.monitor_setting.channel_test_models.trim(),
+  'perf_metrics_setting.exclude_errors_enabled': values.perf_metrics_setting.exclude_errors_enabled,
+  'perf_metrics_setting.excluded_status_codes': values.perf_metrics_setting.excluded_status_codes.trim(),
 })
 
 export function RoutingReliabilitySection({
@@ -344,6 +372,9 @@ export function RoutingReliabilitySection({
   const autoEnable = form.watch('AutomaticEnableChannelEnabled')
   let channelTestModeDescription: string
   switch (channelTestMode) {
+    case 'available_models':
+      channelTestModeDescription = t('Tests the configured models across enabled channels in priority order, stopping at the first success for each model.')
+      break
     case 'auto_ban_only':
       channelTestModeDescription = t(
         'Periodically checks only channels with auto-disable enabled, excluding manually disabled channels.'
@@ -599,6 +630,10 @@ export function RoutingReliabilitySection({
                           value: 'passive_recovery',
                           label: t('Check channels awaiting recovery only'),
                         },
+                        {
+                          value: 'available_models',
+                          label: t('Test configured available models'),
+                        },
                       ]}
                       value={field.value}
                       onValueChange={field.onChange}
@@ -619,12 +654,30 @@ export function RoutingReliabilitySection({
                           <SelectItem value='passive_recovery'>
                             {t('Check channels awaiting recovery only')}
                           </SelectItem>
+                          <SelectItem value='available_models'>
+                            {t('Test configured available models')}
+                          </SelectItem>
                         </SelectGroup>
                       </SelectContent>
                     </Select>
                     <FormDescription>
                       {channelTestModeDescription}
                     </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='monitor_setting.channel_test_models'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Models to test')}</FormLabel>
+                    <FormControl>
+                      <Textarea {...field} rows={3} placeholder={t('One model per line')} />
+                    </FormControl>
+                    <FormDescription>{t('Used only in configured available model test mode.')}</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -709,6 +762,31 @@ export function RoutingReliabilitySection({
                       />
                     </FormControl>
                   </SettingsSwitchItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='perf_metrics_setting.exclude_errors_enabled'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>{t('Exclude error codes from model square')}</FormLabel>
+                      <FormDescription>{t('Failed requests with these status codes will not affect model square metrics.')}</FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='perf_metrics_setting.excluded_status_codes'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Excluded HTTP status codes')}</FormLabel>
+                    <FormControl><Input {...field} placeholder='400,502,524' /></FormControl>
+                    <FormMessage />
+                  </FormItem>
                 )}
               />
             </div>

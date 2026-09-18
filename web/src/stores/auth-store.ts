@@ -54,6 +54,7 @@ export interface AuthUser {
   setting?: Record<string, unknown> | string
   stripe_customer?: string
   sidebar_modules?: string
+  invoice_allowed?: boolean
   permissions?: UserPermissions
 }
 

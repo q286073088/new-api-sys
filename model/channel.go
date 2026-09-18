@@ -766,29 +766,6 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	pollingLock.Lock()
 	defer pollingLock.Unlock()
 
-	if common.MemoryCacheEnabled {
-		channelCache, _ := CacheGetChannel(channelId)
-		if channelCache == nil {
-			return false
-		}
-		if channelCache.ChannelInfo.IsMultiKey {
-			beforeStatus := channelCache.Status
-			// 如果是多Key模式，更新缓存中的状态
-			handlerMultiKeyUpdate(channelCache, usingKey, status, reason)
-			if beforeStatus != channelCache.Status {
-				CacheUpdateChannelStatus(channelId, channelCache.Status)
-			}
-			//CacheUpdateChannel(channelCache)
-			//return true
-		} else {
-			// 如果缓存渠道存在，且状态已是目标状态，直接返回
-			if channelCache.Status == status {
-				return false
-			}
-			CacheUpdateChannelStatus(channelId, status)
-		}
-	}
-
 	shouldUpdateAbilities := false
 	defer func() {
 		if shouldUpdateAbilities {
@@ -824,6 +801,20 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 		if err != nil {
 			common.SysLog(fmt.Sprintf("failed to update channel status: channel_id=%d, status=%d, error=%v", channel.Id, status, err))
 			return false
+		}
+		if common.MemoryCacheEnabled {
+			// Persist first, then update the in-memory snapshot. Updating the cache
+			// before a failed database write made successful health probes appear to
+			// recover a channel until the next cache refresh.
+			channelCache, cacheErr := CacheGetChannel(channelId)
+			if cacheErr == nil && channelCache != nil {
+				if channelCache.ChannelInfo.IsMultiKey {
+					handlerMultiKeyUpdate(channelCache, usingKey, status, reason)
+					CacheUpdateChannel(channelCache)
+				} else {
+					CacheUpdateChannelStatus(channelId, channel.Status)
+				}
+			}
 		}
 	}
 	return true

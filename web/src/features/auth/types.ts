@@ -94,6 +94,8 @@ export interface SystemStatus {
     version?: string
     system_name?: string
     logo?: string
+    customer_service_qq?: string
+    customer_service_qr_code?: string
     github_oauth?: boolean
     github_client_id?: string
     discord_oauth?: boolean
@@ -129,6 +131,8 @@ export interface SystemStatus {
     demo_site_enabled?: boolean
     user_agreement_enabled?: boolean
     privacy_policy_enabled?: boolean
+    referral_enabled?: boolean
+    invoice_enabled?: boolean
     oauth_register_enabled?: boolean
     register_enabled?: boolean
     password_login_enabled?: boolean
@@ -141,6 +145,8 @@ export interface SystemStatus {
   version?: string
   system_name?: string
   logo?: string
+  customer_service_qq?: string
+  customer_service_qr_code?: string
   github_oauth?: boolean
   github_client_id?: string
   discord_oauth?: boolean
@@ -176,6 +182,8 @@ export interface SystemStatus {
   demo_site_enabled?: boolean
   user_agreement_enabled?: boolean
   privacy_policy_enabled?: boolean
+  referral_enabled?: boolean
+  invoice_enabled?: boolean
   oauth_register_enabled?: boolean
   register_enabled?: boolean
   password_login_enabled?: boolean

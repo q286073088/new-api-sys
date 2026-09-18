@@ -41,6 +41,7 @@ export const userFormSchema = z.object({
   quota_dollars: z.number().min(0).optional(),
   group: z.string().optional(),
   remark: z.string().optional(),
+  inviter_id: z.number().int().min(0).optional(),
   admin_permissions: z
     .record(z.string(), z.record(z.string(), z.boolean()))
     .optional(),
@@ -118,6 +119,7 @@ export function transformFormDataToPayload(
     payload.group = data.group
     payload.remark = data.remark || undefined
     payload.id = userId
+    payload.inviter_id = data.inviter_id
   }
 
   return payload
@@ -137,6 +139,7 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     quota_dollars: quotaUnitsToDollars(user.quota),
     group: user.group || DEFAULT_GROUP,
     remark: user.remark || '',
+    inviter_id: user.inviter_id || 0,
     admin_permissions: user.admin_permissions ?? {},
   }
 }

@@ -73,7 +73,7 @@ func CaptureRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens 
 
 func Record(sample Sample) {
 	setting := perf_metrics_setting.GetSetting()
-	if !setting.Enabled || sample.Model == "" {
+	if !setting.Enabled || sample.Model == "" || (!sample.Success && setting.ExcludesStatus(sample.StatusCode)) {
 		return
 	}
 	if sample.Group == "" {

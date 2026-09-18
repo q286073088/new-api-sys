@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strconv"
@@ -168,6 +169,28 @@ func UpdateOption(c *gin.Context) {
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
 	switch option.Key {
+	case "CustomerServiceQQ":
+		if len(strings.TrimSpace(option.Value.(string))) > 128 {
+			common.ApiErrorMsg(c, "客服 QQ 号过长")
+			return
+		}
+	case "CustomerServiceQRCode":
+		value := strings.TrimSpace(option.Value.(string))
+		if len(value) > 4096 {
+			common.ApiErrorMsg(c, "客服二维码地址过长")
+			return
+		}
+		if value != "" {
+			parsed, err := url.Parse(value)
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https" && parsed.Scheme != "data") {
+				common.ApiErrorMsg(c, "客服二维码必须是 HTTP(S) 或 data 图片地址")
+				return
+			}
+			if parsed.Scheme == "data" && !strings.HasPrefix(strings.ToLower(value), "data:image/") {
+				common.ApiErrorMsg(c, "客服二维码 data 地址必须是图片")
+				return
+			}
+		}
 	case setting.ReferralSettingKey:
 		settings, err := setting.ParseReferralSetting(option.Value.(string))
 		if err != nil {

@@ -119,6 +119,8 @@ export type SiteSettings = {
   'legal.privacy_policy': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
+  CustomerServiceQQ: string
+  CustomerServiceQRCode: string
 }
 
 export type AuthSettings = {
@@ -242,10 +244,14 @@ export type ModelSettings = {
   'monitor_setting.channel_test_concurrency': number
   'monitor_setting.channel_test_prompt': string
   'monitor_setting.channel_test_max_tokens': number
+  'monitor_setting.channel_test_models': string
+  'perf_metrics_setting.exclude_errors_enabled': boolean
+  'perf_metrics_setting.excluded_status_codes': string
   'monitor_setting.channel_test_mode':
     | 'scheduled_all'
     | 'auto_ban_only'
     | 'passive_recovery'
+    | 'available_models'
   'channel_affinity_setting.enabled': boolean
   'channel_affinity_setting.switch_on_success': boolean
   'channel_affinity_setting.keep_on_channel_disabled': boolean
@@ -257,6 +263,7 @@ export type ModelSettings = {
 }
 
 export type BillingSettings = {
+  InvoiceSetting: string
   ReferralSetting: string
   QuotaForNewUser: number
   PreConsumedQuota: number

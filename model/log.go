@@ -179,6 +179,15 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	}
 	err = LOG_DB.Model(&Log{}).Where("token_id = ? AND (hidden_for_user = ? OR hidden_for_user IS NULL)", tokenId, false).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
+	for i := range logs {
+		if logs[i].Type != LogTypeConsume && logs[i].Type != LogTypeError {
+			continue
+		}
+		ownerId := logs[i].UserId
+		if settingMap, err := GetUserSetting(ownerId, false); err == nil && !settingMap.RecordIpLog {
+			logs[i].Ip = ""
+		}
+	}
 	return logs, err
 }
 
@@ -317,35 +326,23 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	otherStr := other.JSONString()
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
 	log := &Log{
-		UserId:           userId,
-		Username:         username,
-		CreatedAt:        common.GetTimestamp(),
-		Type:             LogTypeError,
-		Content:          content,
-		PromptTokens:     0,
-		CompletionTokens: 0,
-		TokenName:        tokenName,
-		ModelName:        modelName,
-		Quota:            0,
-		ChannelId:        channelId,
-		TokenId:          tokenId,
-		UseTime:          useTimeSeconds,
-		IsStream:         isStream,
-		Group:            group,
-		Ip: func() string {
-			if needRecordIp {
-				return c.ClientIP()
-			}
-			return ""
-		}(),
+		UserId:            userId,
+		Username:          username,
+		CreatedAt:         common.GetTimestamp(),
+		Type:              LogTypeError,
+		Content:           content,
+		PromptTokens:      0,
+		CompletionTokens:  0,
+		TokenName:         tokenName,
+		ModelName:         modelName,
+		Quota:             0,
+		ChannelId:         channelId,
+		TokenId:           tokenId,
+		UseTime:           useTimeSeconds,
+		IsStream:          isStream,
+		Group:             group,
+		Ip:                c.ClientIP(),
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
 		Other:             otherStr,
@@ -390,35 +387,23 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
 	otherStr := params.Other.JSONString()
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
 	log := &Log{
-		UserId:           userId,
-		Username:         username,
-		CreatedAt:        createdAt,
-		Type:             LogTypeConsume,
-		Content:          params.Content,
-		PromptTokens:     params.PromptTokens,
-		CompletionTokens: params.CompletionTokens,
-		TokenName:        params.TokenName,
-		ModelName:        params.ModelName,
-		Quota:            params.Quota,
-		ChannelId:        params.ChannelId,
-		TokenId:          params.TokenId,
-		UseTime:          params.UseTimeSeconds,
-		IsStream:         params.IsStream,
-		Group:            params.Group,
-		Ip: func() string {
-			if needRecordIp {
-				return c.ClientIP()
-			}
-			return ""
-		}(),
+		UserId:            userId,
+		Username:          username,
+		CreatedAt:         createdAt,
+		Type:              LogTypeConsume,
+		Content:           params.Content,
+		PromptTokens:      params.PromptTokens,
+		CompletionTokens:  params.CompletionTokens,
+		TokenName:         params.TokenName,
+		ModelName:         params.ModelName,
+		Quota:             params.Quota,
+		ChannelId:         params.ChannelId,
+		TokenId:           params.TokenId,
+		UseTime:           params.UseTimeSeconds,
+		IsStream:          params.IsStream,
+		Group:             params.Group,
+		Ip:                c.ClientIP(),
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
 		Other:             otherStr,
@@ -647,6 +632,13 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	}
 
 	formatUserLogs(logs, startIdx)
+	if settingMap, err := GetUserSetting(userId, false); err == nil && !settingMap.RecordIpLog {
+		for i := range logs {
+			if logs[i].Type == LogTypeConsume || logs[i].Type == LogTypeError {
+				logs[i].Ip = ""
+			}
+		}
+	}
 	return logs, total, err
 }
 

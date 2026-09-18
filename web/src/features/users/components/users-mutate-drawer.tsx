@@ -360,6 +360,15 @@ export function UsersMutateDrawer({
                 <SideDrawerSection>
                   <h3 className='text-sm font-medium'>{t('Group & Quota')}</h3>
 
+                  <FormField control={form.control} name='inviter_id' render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Inviter user ID')}</FormLabel>
+                      <FormControl><Input type='number' min={0} step={1} value={field.value ?? 0} onChange={(event) => field.onChange(Number(event.target.value))} /></FormControl>
+                      <FormDescription>{t('Use 0 for no inviter. Existing rewards are unchanged.')}</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+
                   <FormField
                     control={form.control}
                     name='group'

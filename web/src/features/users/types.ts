@@ -118,6 +118,7 @@ export interface SearchUsersParams {
 }
 
 export interface UserFormData {
+  inviter_id?: number
   username: string
   display_name: string
   password?: string
@@ -143,6 +144,8 @@ export interface ManageUserQuotaPayload {
   action: 'add_quota'
   mode: QuotaAdjustMode
   value: number
+  gift?: boolean
+  paid_amount_cents?: number
 }
 
 // ============================================================================

@@ -68,6 +68,8 @@ const SITE_SECTIONS = [
         <HeaderNavigationSection
           config={headerNavConfig}
           initialSerialized={headerNavSerialized}
+          initialCustomerServiceQQ={settings.CustomerServiceQQ}
+          initialCustomerServiceQRCode={settings.CustomerServiceQRCode}
         />
       )
     },

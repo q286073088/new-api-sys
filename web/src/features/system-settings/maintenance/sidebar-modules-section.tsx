@@ -128,6 +128,10 @@ export function SidebarModulesSection({
         title: t('Wallet'),
         description: t('Top up balance and view billing history.'),
       },
+      invoice: {
+        title: t('Invoice Center'),
+        description: t('Apply for and download invoices.'),
+      },
       personal: {
         title: t('Profile'),
         description: t('Personal settings and profile management.'),
@@ -153,6 +157,10 @@ export function SidebarModulesSection({
       user: {
         title: t('Users'),
         description: t('Administer user accounts and roles.'),
+      },
+      invoice_review: {
+        title: t('Invoice review'),
+        description: t('Review invoice applications and upload invoice files.'),
       },
       setting: {
         title: t('System settings'),

@@ -54,8 +54,10 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
   personal: {
     enabled: true,
     topup: true,
+    invoice: true,
     personal: true,
     security: true,
+    referral: true,
   },
   admin: {
     enabled: true,
@@ -63,6 +65,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     models: true,
     redemption: true,
     user: true,
+    invoice_review: true,
     setting: true,
     subscription: true,
   },
@@ -109,13 +112,16 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/usage-logs/drawing': { section: 'console', module: 'midjourney' },
   '/usage-logs/task': { section: 'console', module: 'task' },
   '/wallet': { section: 'personal', module: 'topup' },
+  '/invoices': { section: 'personal', module: 'invoice' },
   '/profile': { section: 'personal', module: 'personal' },
   '/security': { section: 'personal', module: 'security' },
+  '/referrals': { section: 'personal', module: 'referral' },
   '/channels': { section: 'admin', module: 'channel' },
   '/models': { section: 'admin', module: 'models' },
   '/models/metadata': { section: 'admin', module: 'models' },
   '/models/deployments': { section: 'admin', module: 'models' },
   '/users': { section: 'admin', module: 'user' },
+  '/invoice-review': { section: 'admin', module: 'invoice_review' },
   '/redemption-codes': { section: 'admin', module: 'redemption' },
   '/subscriptions': { section: 'admin', module: 'subscription' },
   '/system-settings': { section: 'admin', module: 'setting' },
@@ -307,8 +313,32 @@ export function useSidebarConfig(navGroups: NavGroup[]): NavGroup[] {
           ...group,
           items: filterNavItems(group.items, adminConfig, userConfig),
         }))
+        .map((group) => ({
+          ...group,
+          items: group.items.filter((item) => {
+            if ('url' in item) {
+              if (status?.referral_enabled === false && item.url === '/referrals') {
+                return false
+              }
+              if (
+                (status?.invoice_enabled === false ||
+                  auth?.user?.invoice_allowed === false) &&
+                item.url === '/invoices'
+              ) {
+                return false
+              }
+            }
+          }),
+        }))
         .filter((group) => group.items.length > 0), // Only show navigation groups with visible items
-    [navGroups, adminConfig, userConfig]
+    [
+      navGroups,
+      adminConfig,
+      userConfig,
+      status?.referral_enabled,
+      status?.invoice_enabled,
+      auth?.user?.invoice_allowed,
+    ]
   )
 
   return filteredNavGroups
@@ -332,4 +362,10 @@ export function useIsSidebarModuleVisible(url: string): boolean {
       : parseUserSidebarConfig(auth?.user?.sidebar_modules)
 
   return isModuleEnabled(url, adminConfig, userConfig)
+}
+
+/** Recommendation pages are available only while the administrator enables rebates. */
+export function useIsReferralEnabled(): boolean {
+  const { status } = useStatus()
+  return status?.referral_enabled !== false
 }

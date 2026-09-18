@@ -92,6 +92,9 @@ const MODELS_SECTIONS = [
             settings['monitor_setting.channel_test_prompt'],
           'monitor_setting.channel_test_max_tokens':
             settings['monitor_setting.channel_test_max_tokens'],
+          'monitor_setting.channel_test_models': settings['monitor_setting.channel_test_models'],
+          'perf_metrics_setting.exclude_errors_enabled': settings['perf_metrics_setting.exclude_errors_enabled'],
+          'perf_metrics_setting.excluded_status_codes': settings['perf_metrics_setting.excluded_status_codes'],
         }}
       />
     ),

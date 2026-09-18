@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -59,6 +60,9 @@ func InitOptionMap() {
 	jsplugin.DefaultRegistry.SetEnabled(constant.TaskPluginEnabled)
 	common.OptionMap[setting.TaskPluginMarketplaceSourcesKey] = setting.TaskPluginMarketplaceSources2JsonString()
 	common.OptionMap[setting.ReferralSettingKey] = common.GetJsonString(setting.GetReferralSetting())
+	common.OptionMap[setting.InvoiceSettingKey] = common.GetJsonString(setting.GetInvoiceSetting())
+	common.OptionMap["CustomerServiceQQ"] = ""
+	common.OptionMap["CustomerServiceQRCode"] = ""
 	common.OptionMap[setting.TaskPluginDisabledFactoryKeysKey] = "[]"
 	jsplugin.DefaultRegistry.SetDisabledFactoryKeys(nil)
 	common.OptionMap["DataExportEnabled"] = strconv.FormatBool(common.DataExportEnabled)
@@ -217,6 +221,14 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == setting.InvoiceSettingKey {
+		_, err := setting.ParseInvoiceSetting(value)
+		return err
+	}
+	if key == "perf_metrics_setting.excluded_status_codes" {
+		_, err := perf_metrics_setting.ParseExcludedStatusCodes(value)
+		return err
+	}
 	if key == "ModelRetryTimes" {
 		_, err := operation_setting.ParseModelRetryTimes(value)
 		return err
@@ -236,6 +248,9 @@ func validateOptionValue(key string, value string) error {
 	}
 	if key == operation_setting.ChannelTestMaxTokensOptionKey {
 		return operation_setting.ValidateChannelTestMaxTokens(value)
+	}
+	if key == operation_setting.ChannelTestModelsOptionKey {
+		return operation_setting.ValidateChannelTestModels(value)
 	}
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
@@ -310,6 +325,11 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
+	if key == setting.InvoiceSettingKey {
+		if err := setting.UpdateInvoiceSetting(value); err != nil {
+			return err
+		}
+	}
 	if key == operation_setting.EpayDomainConfigsKey {
 		if err := operation_setting.UpdateEpayDomainConfigs(value); err != nil {
 			return err

@@ -68,6 +68,8 @@ func GetStatus(c *gin.Context) {
 		"system_name":                 common.SystemName,
 		"logo":                        common.Logo,
 		"footer_html":                 common.Footer,
+		"customer_service_qq":         common.OptionMap["CustomerServiceQQ"],
+		"customer_service_qr_code":    common.OptionMap["CustomerServiceQRCode"],
 		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,
 		"wechat_login":                common.WeChatAuthEnabled,
 		"server_address":              system_setting.ServerAddress,
@@ -126,6 +128,8 @@ func GetStatus(c *gin.Context) {
 		"user_agreement_enabled":      legalSetting.UserAgreement != "",
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
 		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
+		"referral_enabled":            setting.GetReferralSetting().Enabled,
+		"invoice_enabled":             setting.GetInvoiceSetting().Enabled,
 	}
 
 	// 根据启用状态注入可选内容

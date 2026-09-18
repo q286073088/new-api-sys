@@ -1119,12 +1119,71 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 	if strings.TrimSpace(mode) == "" {
 		mode = operation_setting.GetMonitorSetting().ChannelTestMode
 	}
+	if mode == operation_setting.ChannelTestModeAvailableModels {
+		return runAvailableModelTests(ctx, testUserID, notify, report)
+	}
 	selected := selectChannelsForAutomaticTest(channels, mode)
 	allowDisable := mode != operation_setting.ChannelTestModePassiveRecovery
 	concurrency := operation_setting.GetMonitorSetting().ChannelTestConcurrency
 	summary := performChannelTests(ctx, selected, testUserID, allowDisable, concurrency, report)
 	if notify && (ctx == nil || ctx.Err() == nil) {
 		service.NotifyRootUser(dto.NotifyTypeChannelTest, "通道测试完成", "所有通道测试已完成")
+	}
+	return summary, nil
+}
+
+// runAvailableModelTests probes each configured model using the same group
+// priority order as normal routing. Each model is considered available when the
+// first routed channel exists; later channels are used only for retry.
+func runAvailableModelTests(ctx context.Context, testUserID int, notify bool, report func(processed, total int)) (channelTestSummary, error) {
+	models := operation_setting.GetMonitorSetting().TestModels()
+	if len(models) == 0 {
+		return channelTestSummary{}, errors.New("available model test mode requires at least one model")
+	}
+	total := len(models)
+	if report != nil {
+		report(0, total)
+	}
+	summary := channelTestSummary{}
+	for i, modelName := range models {
+		if ctx != nil && ctx.Err() != nil {
+			break
+		}
+		channels, err := model.GetAvailableModelTestChannels(modelName)
+		if err != nil {
+			return summary, err
+		}
+		if len(channels) == 0 {
+			summary.Failed++
+		}
+		for i, candidate := range channels {
+			if ctx != nil && ctx.Err() != nil {
+				break
+			}
+			if i == 0 {
+				summary.Tested++
+				if ctx != nil && ctx.Err() == nil {
+					summary.Succeeded++
+				}
+				break
+			}
+			if candidate.Status != common.ChannelStatusEnabled {
+				continue
+			}
+			result := testChannel(ctx, candidate, testUserID, modelName, "", shouldUseStreamForAutomaticChannelTest(candidate))
+			summary.Tested++
+			if result.localErr == nil && result.newAPIError == nil {
+				summary.Succeeded++
+				break
+			}
+			summary.Failed++
+		}
+		if report != nil {
+			report(i+1, total)
+		}
+	}
+	if notify && (ctx == nil || ctx.Err() == nil) {
+		service.NotifyRootUser(dto.NotifyTypeChannelTest, "可用模型测试完成", "已按渠道优先级完成可用模型测试")
 	}
 	return summary, nil
 }

@@ -29,6 +29,7 @@ import {
   MessageSquare,
   PlugZap,
   Radio,
+  Share2,
   ServerCog,
   Settings,
   ShieldCheck,
@@ -117,6 +118,11 @@ export function useSidebarData(): SidebarData {
             icon: Wallet,
           },
           {
+            title: t('Invoice Center'),
+            url: '/invoices',
+            icon: FileText,
+          },
+          {
             title: t('Profile'),
             url: '/profile',
             icon: User,
@@ -125,6 +131,11 @@ export function useSidebarData(): SidebarData {
             title: t('Security & Access'),
             url: '/security',
             icon: ShieldCheck,
+          },
+          {
+            title: t('Referral Rewards'),
+            url: '/referrals',
+            icon: Share2,
           },
         ],
       },
@@ -146,6 +157,12 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+          },
+          {
+            title: t('Invoice review'),
+            url: '/invoice-review',
+            icon: FileText,
+            requiredRole: ROLE.ADMIN,
           },
           {
             title: t('Redemption Codes'),

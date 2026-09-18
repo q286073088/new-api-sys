@@ -516,6 +516,7 @@ func buildSelfUserData(user *model.User) map[string]any {
 		"setting":           user.Setting,
 		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
+		"invoice_allowed":   setting.GetInvoiceSetting().Allows(user.Id),
 		"permissions":       permissions,
 	}
 }
@@ -645,7 +646,10 @@ func GetUserModels(c *gin.Context) {
 }
 
 func UpdateUser(c *gin.Context) {
-	var updatedUser model.User
+	var updatedUser struct {
+		model.User
+		NewInviterID *int `json:"inviter_id"`
+	}
 	err := common.DecodeJson(c.Request.Body, &updatedUser)
 	if err != nil || updatedUser.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
@@ -678,6 +682,11 @@ func UpdateUser(c *gin.Context) {
 	updatePassword := updatedUser.Password != ""
 	authzTouched := false
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if updatedUser.NewInviterID != nil {
+			if err := model.SetUserInviter(tx, updatedUser.Id, *updatedUser.NewInviterID); err != nil {
+				return err
+			}
+		}
 		if err := updatedUser.EditWithTx(tx, updatePassword); err != nil {
 			return err
 		}
@@ -1041,10 +1050,12 @@ func updateAdminPermissionsForUserInTx(c *gin.Context, tx *gorm.DB, userID int, 
 }
 
 type ManageRequest struct {
-	Id     int    `json:"id"`
-	Action string `json:"action"`
-	Value  int    `json:"value"`
-	Mode   string `json:"mode"`
+	Id              int    `json:"id"`
+	Action          string `json:"action"`
+	Value           int    `json:"value"`
+	Mode            string `json:"mode"`
+	Gift            bool   `json:"gift"`
+	PaidAmountCents int64  `json:"paid_amount_cents"`
 }
 
 // ManageUser Only admin user can do this

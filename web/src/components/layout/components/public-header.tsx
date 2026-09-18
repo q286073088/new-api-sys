@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
+import { CustomerServiceDialog } from '@/components/customer-service-dialog'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
@@ -276,6 +277,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                   loading={notifications.loading}
                 />
               )}
+              <CustomerServiceDialog />
 
               {showAuthButtons && (
                 <>
@@ -299,6 +301,7 @@ export function PublicHeader(props: PublicHeaderProps) {
 
             {/* Mobile: compact actions + hamburger */}
             <div className='flex items-center gap-2 sm:hidden'>
+              <CustomerServiceDialog />
               {showThemeSwitch && <ThemeSwitch />}
               {showAuthButtons && !loading && isAuthenticated && (
                 <ProfileDropdown />
