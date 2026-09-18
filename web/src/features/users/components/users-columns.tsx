@@ -242,7 +242,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
     },
     {
       id: 'invite_info',
-      header: t('Invite Info'),
+      header: '邀请信息',
       cell: ({ row }) => {
         const user = row.original
         const affCount = user.aff_count || 0
@@ -260,8 +260,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
           >
             {(affCount > 0 || affHistoryQuota !== 0) && (
               <LongText>
-                {t('Invited {{count}} users', { count: affCount })} ·{' '}
-                {t('Earnings')}:{' '}
+                邀请 {affCount} 人 · 收益：{' '}
                 <span className='tabular-nums'>
                   {formatQuota(affHistoryQuota)}
                 </span>
@@ -269,7 +268,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
             )}
             {inviterId > 0 && (
               <LongText className='text-muted-foreground'>
-                {t('Inviter')} ID: {inviterId}
+                邀请人 ID：{inviterId}
               </LongText>
             )}
           </div>

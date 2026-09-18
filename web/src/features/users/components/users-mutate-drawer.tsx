@@ -362,9 +362,9 @@ export function UsersMutateDrawer({
 
                   <FormField control={form.control} name='inviter_id' render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Inviter user ID')}</FormLabel>
+                      <FormLabel>邀请人用户 ID</FormLabel>
                       <FormControl><Input type='number' min={0} step={1} value={field.value ?? 0} onChange={(event) => field.onChange(Number(event.target.value))} /></FormControl>
-                      <FormDescription>{t('Use 0 for no inviter. Existing rewards are unchanged.')}</FormDescription>
+                      <FormDescription>填 0 表示无邀请人。已有推荐奖励不受影响。</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )} />

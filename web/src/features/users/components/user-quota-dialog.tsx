@@ -173,20 +173,20 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
         {mode === 'add' && (
           <div className='flex items-center justify-between gap-3'>
             <div>
-              <Label htmlFor='quota-gift'>{t('Gift credit')}</Label>
-              <p className='text-muted-foreground text-xs'>{t('Gift credit does not trigger referral rewards or invoice eligibility.')}</p>
+              <Label htmlFor='quota-gift'>赠金额度</Label>
+              <p className='text-muted-foreground text-xs'>赠金不触发推荐奖励，也不计入开票额度。</p>
             </div>
             <Switch id='quota-gift' checked={gift} onCheckedChange={setGift} />
           </div>
         )}
         {mode === 'add' && !gift && !tokensOnly && (
           <div className='space-y-2'>
-            <Label>{t('Actual paid amount')} ({currencyLabel})</Label>
+            <Label>实付金额（{currencyLabel}）</Label>
             <Input
               type='number'
               min={0}
               step={0.01}
-              placeholder={t('Optional, used for invoice and referral base')}
+              placeholder='可选，用于开票和推荐奖励计算'
               value={paidAmount}
               onChange={(e) => setPaidAmount(e.target.value)}
             />
