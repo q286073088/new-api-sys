@@ -283,6 +283,52 @@ func TestStreamScannerHandler_ClientCancelAbortsUpstreamAndReturns(t *testing.T)
 	assert.NotContains(t, body, "second")
 }
 
+func TestStreamScannerHandler_HTTP2IdleAfterSuccessfulWrite(t *testing.T) {
+	oldStreamingTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 90
+	t.Cleanup(func() { constant.StreamingTimeout = oldStreamingTimeout })
+
+	reader, writer := io.Pipe()
+	t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
+	finished := make(chan *relaycommon.RelayInfo, 1)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, _ := gin.CreateTestContext(w)
+		c.Request = r
+		info := &relaycommon.RelayInfo{DisablePing: true, ChannelMeta: &relaycommon.ChannelMeta{}}
+		StreamScannerHandler(c, &http.Response{Body: reader}, info, func(data string, sr *StreamResult) {
+			if err := StringData(c, data); err != nil {
+				sr.Stop(err)
+			}
+		})
+		finished <- info
+	}))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	upstreamFinished := make(chan struct{})
+	go func() {
+		defer close(upstreamFinished)
+		defer writer.Close()
+		_, _ = fmt.Fprint(writer, "data: first\n\n")
+		timer := time.NewTimer(streamWriteTimeout + time.Second)
+		defer timer.Stop()
+		<-timer.C
+		_, _ = fmt.Fprint(writer, "data: second\n\ndata: [DONE]\n\n")
+	}()
+	client := server.Client()
+	client.Timeout = streamWriteTimeout + 10*time.Second
+	response, err := client.Get(server.URL)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, 2, response.ProtoMajor)
+	body, err := io.ReadAll(response.Body)
+	assert.NoError(t, err, "a successful write must not leave an HTTP/2 deadline armed")
+	assert.Contains(t, string(body), "second")
+	info := <-finished
+	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
+	<-upstreamFinished
+}
+
 // ---------- Ping tests ----------
 
 func TestStreamScannerHandler_PingSentDuringSlowUpstream(t *testing.T) {

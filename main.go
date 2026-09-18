@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -210,12 +211,18 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:    ":" + port,
-		Handler: server,
+		Addr:        ":" + port,
+		Handler:     server,
+		ConnContext: common.ConnectionDiagnosticsContext,
+	}
+	listener, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		common.FatalLog("failed to listen for HTTP requests: " + err.Error())
+		return
 	}
 
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(common.WithConnectionDiagnostics(listener)); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			common.FatalLog("failed to start HTTP server: " + err.Error())
 		}
 	}()

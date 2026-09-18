@@ -28,14 +28,18 @@ export function RequestDiagnosticsSection(props: {
   const { t } = useTranslation()
   const data = props.diagnostics
   let explanation: string | undefined
-  if (data.client_context_error === 'context deadline exceeded') {
+  if (data.downstream_write_error_kind === 'timeout') {
+    explanation = t(
+      'The gateway socket write timed out. This does not establish that the user canceled the request.'
+    )
+  } else if (data.client_context_error === 'context deadline exceeded') {
     explanation = t('The downstream request deadline expired.')
   } else if (
     props.endReason === 'client_gone' ||
     data.client_context_error === 'context canceled'
   ) {
     explanation = t(
-      'The downstream connection was canceled. Client or proxy logs are needed to identify who closed it; closing the upstream afterward can produce the same cancellation there.'
+      'The downstream request context was canceled. Socket errors and client or proxy logs are needed to identify the cause; this alone does not indicate a manual cancellation.'
     )
   } else if (props.endReason === 'timeout') {
     explanation = t('No upstream data arrived before the stream idle timeout.')
@@ -43,14 +47,28 @@ export function RequestDiagnosticsSection(props: {
 
   const fields: [string, string | number | undefined][] = [
     [t('Node'), data.node_name],
+    [t('Request host'), data.request_host],
+    [t('Cloudflare Ray ID'), data.cloudflare_ray],
     [t('Request attempt'), data.attempt_number],
     [t('User Agent'), data.client_user_agent],
     [t('Client HTTP protocol'), data.client_protocol],
     [t('Client context error'), data.client_context_error],
+    [t('Downstream read error'), data.downstream_read_error],
+    [t('Downstream read failure time'), data.downstream_read_error_at],
+    [t('Downstream write error'), data.downstream_write_error],
+    [t('Downstream write failure time'), data.downstream_write_error_at],
+    [t('Downstream write deadline'), data.downstream_write_deadline],
+    [t('Gateway connection close time'), data.gateway_connection_closed_at],
     [t('Client deadline'), data.client_deadline],
     [t('Request body size (bytes)'), data.request_body_bytes],
     [t('Estimated input tokens'), data.estimated_input_tokens],
     [t('Downstream HTTP status'), data.downstream_status],
+    [
+      t('Response headers written'),
+      data.downstream_headers_written === undefined
+        ? undefined
+        : String(data.downstream_headers_written),
+    ],
     [t('Bytes sent to client'), data.downstream_written_bytes],
     [t('Upstream host'), data.upstream_host],
     [t('Upstream HTTP status'), data.upstream_status],

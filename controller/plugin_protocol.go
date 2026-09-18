@@ -626,7 +626,6 @@ func waitForTaskPluginProtocolTick(
 		case <-observationContext.Done():
 			return false
 		case <-heartbeatTicker.C:
-			helper.ExtendWriteDeadline(c)
 			if err := writeTaskPluginProtocolHeartbeat(c); err != nil {
 				return false
 			}
@@ -1069,6 +1068,8 @@ func writeTaskPluginResponseNotFound(c *gin.Context, responseID, reason string) 
 }
 
 func writeTaskPluginProtocolHeartbeat(c *gin.Context) error {
+	helper.ExtendWriteDeadline(c)
+	defer helper.ClearWriteDeadline(c)
 	if _, err := c.Writer.Write([]byte(": PING\n")); err != nil {
 		return err
 	}
@@ -1224,6 +1225,7 @@ func writeTaskPluginProtocolEvent(c *gin.Context, event dto.PluginResponsesStrea
 		return err
 	}
 	helper.ExtendWriteDeadline(c)
+	defer helper.ClearWriteDeadline(c)
 	if _, err = c.Writer.Write([]byte("event: " + event.Type + "\n")); err != nil {
 		return err
 	}

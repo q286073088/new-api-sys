@@ -31,6 +31,10 @@ func appendRelayRequestDiagnostics(ctx *gin.Context, info *relaycommon.RelayInfo
 		"client_protocol":   ctx.Request.Proto,
 		"client_user_agent": relayDiagnosticText(info, ctx.Request.UserAgent()),
 		"attempt_number":    info.RetryIndex + 1,
+		"request_host":      relayDiagnosticText(info, ctx.Request.Host),
+	}
+	if ray := ctx.GetHeader("CF-Ray"); ray != "" {
+		diagnostics["cloudflare_ray"] = relayDiagnosticText(info, ray)
 	}
 	if !info.StartTime.IsZero() {
 		diagnostics["request_elapsed_ms"] = max(0, time.Since(info.StartTime).Milliseconds())
@@ -43,10 +47,31 @@ func appendRelayRequestDiagnostics(ctx *gin.Context, info *relaycommon.RelayInfo
 	}
 	if ctx.Writer != nil {
 		diagnostics["downstream_status"] = ctx.Writer.Status()
+		diagnostics["downstream_headers_written"] = ctx.Writer.Written()
 		diagnostics["downstream_written_bytes"] = max(0, ctx.Writer.Size())
 	}
 	if clientErr != nil {
 		diagnostics["client_context_error"] = clientErr.Error()
+		if cause := context.Cause(ctx.Request.Context()); cause != nil {
+			diagnostics["client_context_cause"] = relayDiagnosticText(info, cause.Error())
+		}
+	}
+	if connection, ok := common.GetConnectionDiagnostics(ctx.Request.Context()); ok {
+		for operation, failure := range map[string]common.ConnectionIOFailure{"read": connection.ReadFailure, "write": connection.WriteFailure} {
+			if failure.At.IsZero() || failure.At.Before(info.StartTime) {
+				continue
+			}
+			prefix := "downstream_" + operation + "_"
+			diagnostics[prefix+"error"] = relayDiagnosticText(info, failure.Error)
+			diagnostics[prefix+"error_kind"] = failure.Kind
+			diagnostics[prefix+"error_at"] = failure.At.UTC().Format(time.RFC3339Nano)
+			if !failure.Deadline.IsZero() {
+				diagnostics[prefix+"deadline"] = failure.Deadline.UTC().Format(time.RFC3339Nano)
+			}
+		}
+		if !connection.ClosedAt.IsZero() && !connection.ClosedAt.Before(info.StartTime) {
+			diagnostics["gateway_connection_closed_at"] = connection.ClosedAt.UTC().Format(time.RFC3339Nano)
+		}
 	}
 	if deadline, ok := ctx.Request.Context().Deadline(); ok {
 		diagnostics["client_deadline"] = deadline.UTC().Format(time.RFC3339Nano)

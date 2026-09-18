@@ -107,6 +107,7 @@ const canceledStream: LogOtherData = {
   admin_info: {
     request_diagnostics: {
       client_context_error: 'context canceled',
+      cloudflare_ray: 'ray-fixture-SJC',
       client_user_agent: 'ExampleClient/1.0',
       upstream_request_id: 'upstream-trace-123',
       upstream_status: 200,
@@ -144,6 +145,27 @@ describe('administrator request diagnostics', () => {
     expect(screen.queryByText('Request diagnostics')).not.toBeInTheDocument()
     expect(screen.queryByText('upstream-trace-123')).not.toBeInTheDocument()
     expect(screen.queryByText('ExampleClient/1.0')).not.toBeInTheDocument()
+    expect(screen.queryByText('ray-fixture-SJC')).not.toBeInTheDocument()
+  })
+
+  test('identifies a gateway write timeout without treating it as manual cancellation', () => {
+    renderDetails(true, {
+      ...canceledStream,
+      admin_info: {
+        request_diagnostics: {
+          ...canceledStream.admin_info?.request_diagnostics,
+          downstream_write_error_kind: 'timeout',
+          downstream_write_error: 'i/o timeout',
+        },
+      },
+    })
+    expect(
+      screen.getByText(
+        'The gateway socket write timed out. This does not establish that the user canceled the request.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.getByText('ray-fixture-SJC')).toBeInTheDocument()
+    expect(screen.getByText('i/o timeout')).toBeInTheDocument()
   })
 
   test('keeps older logs readable when no diagnostics were recorded', () => {

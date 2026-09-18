@@ -114,6 +114,18 @@ export interface ToolSurchargeItem {
 }
 
 export interface RequestDiagnostics {
+  request_host?: string
+  cloudflare_ray?: string
+  client_context_cause?: string
+  downstream_headers_written?: boolean
+  downstream_read_error?: string
+  downstream_read_error_kind?: string
+  downstream_read_error_at?: string
+  downstream_write_error?: string
+  downstream_write_error_kind?: string
+  downstream_write_error_at?: string
+  downstream_write_deadline?: string
+  gateway_connection_closed_at?: string
   node_name?: string
   attempt_number?: number
   client_user_agent?: string
