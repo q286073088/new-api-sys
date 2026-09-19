@@ -88,8 +88,11 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
         value: mode === 'override' ? value : Math.abs(value),
         gift: mode === 'add' ? gift : false,
         paid_amount_cents:
-          mode === 'add' && !gift && !tokensOnly
-            ? Math.max(0, Math.round((Number.parseFloat(paidAmount) || 0) * 100))
+          mode === 'add' && !gift
+            ? Math.max(
+                0,
+                Math.round((Number.parseFloat(paidAmount) || 0) * 100)
+              )
             : 0,
       })
       if (result.success) {
@@ -97,6 +100,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
         setAmount('')
         setMode('add')
         setGift(false)
+        setPaidAmount('')
         props.onOpenChange(false)
         props.onSuccess()
       } else {
@@ -174,19 +178,21 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
           <div className='flex items-center justify-between gap-3'>
             <div>
               <Label htmlFor='quota-gift'>赠金额度</Label>
-              <p className='text-muted-foreground text-xs'>赠金不触发推荐奖励，也不计入开票额度。</p>
+              <p className='text-muted-foreground text-xs'>
+                赠金不触发推荐奖励，也不计入开票额度。
+              </p>
             </div>
             <Switch id='quota-gift' checked={gift} onCheckedChange={setGift} />
           </div>
         )}
-        {mode === 'add' && !gift && !tokensOnly && (
+        {mode === 'add' && !gift && (
           <div className='space-y-2'>
-            <Label>实付金额（{currencyLabel}）</Label>
+            <Label>实付金额（人民币）</Label>
             <Input
               type='number'
               min={0}
               step={0.01}
-              placeholder='可选，用于开票和推荐奖励计算'
+              placeholder='可选，用于开票和人工充值记录'
               value={paidAmount}
               onChange={(e) => setPaidAmount(e.target.value)}
             />

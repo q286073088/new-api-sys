@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -269,6 +270,28 @@ func CacheUpdateChannelStatus(id int, status int) {
 						break
 					}
 				}
+			}
+		}
+	}
+	if status == common.ChannelStatusEnabled {
+		channel, ok := channelsIDM[id]
+		if !ok {
+			return
+		}
+		if group2model2channels == nil {
+			group2model2channels = make(map[string]map[string][]int)
+		}
+		for _, group := range channel.GetGroups() {
+			if group2model2channels[group] == nil {
+				group2model2channels[group] = make(map[string][]int)
+			}
+			for _, model := range channel.GetModels() {
+				ids := group2model2channels[group][model]
+				if !slices.Contains(ids, id) {
+					ids = append(ids, id)
+				}
+				sort.SliceStable(ids, func(i, j int) bool { return channelsIDM[ids[i]].GetPriority() > channelsIDM[ids[j]].GetPriority() })
+				group2model2channels[group][model] = ids
 			}
 		}
 	}

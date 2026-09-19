@@ -205,10 +205,22 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 	return channel.getNextKey(false)
 }
 
-// GetNextTestKey probes automatically disabled keys when the channel needs
-// recovery. Enabled channels still test usable keys; manual keys stay excluded.
+// GetNextTestKey prioritizes automatically disabled keys for recovery, including
+// partially healthy channels. Manually disabled keys remain excluded.
 func (channel *Channel) GetNextTestKey() (string, int, *types.NewAPIError) {
-	return channel.getNextKey(channel.Status == common.ChannelStatusAutoDisabled)
+	return channel.getNextKey(channel.Status != common.ChannelStatusManuallyDisabled && (channel.Status == common.ChannelStatusAutoDisabled || channel.HasAutoDisabledKeys()))
+}
+
+func (channel *Channel) HasAutoDisabledKeys() bool {
+	if !channel.ChannelInfo.IsMultiKey {
+		return false
+	}
+	for i := range channel.GetKeys() {
+		if channel.ChannelInfo.MultiKeyStatusList[i] == common.ChannelStatusAutoDisabled {
+			return true
+		}
+	}
+	return false
 }
 
 func (channel *Channel) getNextKey(channelTest bool) (string, int, *types.NewAPIError) {
@@ -240,11 +252,13 @@ func (channel *Channel) getNextKey(channelTest bool) (string, int, *types.NewAPI
 		return common.ChannelStatusEnabled
 	}
 
+	// Recovery probes rotate only disabled keys so healthy traffic cannot starve recovery.
+	recoverDisabled := channelTest && channel.HasAutoDisabledKeys()
 	// Collect indexes of enabled keys
 	enabledIdx := make([]int, 0, len(keys))
 	for i := range keys {
 		status := getStatus(i)
-		if status == common.ChannelStatusEnabled || (channelTest && status == common.ChannelStatusAutoDisabled) {
+		if (!recoverDisabled && status == common.ChannelStatusEnabled) || (recoverDisabled && status == common.ChannelStatusAutoDisabled) {
 			enabledIdx = append(enabledIdx, i)
 		}
 	}
@@ -290,7 +304,7 @@ func (channel *Channel) getNextKey(channelTest bool) (string, int, *types.NewAPI
 		for i := range keys {
 			idx := (start + i) % len(keys)
 			status := getStatus(idx)
-			if status == common.ChannelStatusEnabled || (channelTest && status == common.ChannelStatusAutoDisabled) {
+			if (!recoverDisabled && status == common.ChannelStatusEnabled) || (recoverDisabled && status == common.ChannelStatusAutoDisabled) {
 				// update polling index for next call (point to the next position)
 				channel.ChannelInfo.MultiKeyPollingIndex = (idx + 1) % len(keys)
 				if channelTest && common.MemoryCacheEnabled {
@@ -779,8 +793,28 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	if err != nil {
 		return false
 	} else {
-		if channel.Status == status {
+		if channel.Status == status && !channel.ChannelInfo.IsMultiKey {
 			return false
+		}
+		if channel.ChannelInfo.IsMultiKey && usingKey != "" {
+			found := false
+			for i, key := range channel.GetKeys() {
+				if key != usingKey {
+					continue
+				}
+				found = true
+				current, exists := channel.ChannelInfo.MultiKeyStatusList[i]
+				if !exists {
+					current = common.ChannelStatusEnabled
+				}
+				if current == status || (status == common.ChannelStatusEnabled && (current == common.ChannelStatusManuallyDisabled || channel.Status == common.ChannelStatusManuallyDisabled)) {
+					return false
+				}
+				break
+			}
+			if !found {
+				return false
+			}
 		}
 
 		if channel.ChannelInfo.IsMultiKey {
@@ -811,6 +845,7 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 				if channelCache.ChannelInfo.IsMultiKey {
 					handlerMultiKeyUpdate(channelCache, usingKey, status, reason)
 					CacheUpdateChannel(channelCache)
+					CacheUpdateChannelStatus(channelId, channelCache.Status)
 				} else {
 					CacheUpdateChannelStatus(channelId, channel.Status)
 				}

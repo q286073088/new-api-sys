@@ -90,7 +90,7 @@ func GetReferralInvitees(userID, parentID int, page *common.PageInfo) ([]Referra
 	// Provider order amounts have different units. Manual credits store exact
 	// quota units; subscription/balance records are not wallet top-ups.
 	if err := DB.Model(&TopUp{}).Where("user_id IN ? AND status = ? AND amount > 0 AND payment_provider <> ? AND payment_method <> ?",
-		ids, common.TopUpStatusSuccess, PaymentProviderBalance, PaymentMethodBalance).
+		ids, common.TopUpStatusSuccess, PaymentProviderBalance, PaymentMethodBalance).Where("(is_gift = ? OR is_gift IS NULL)", false).
 		Select("user_id, SUM(CASE WHEN payment_provider = ? OR (payment_provider = '' AND payment_method = ?) THEN money * ? WHEN payment_provider IN ? OR (payment_provider = '' AND payment_method IN ?) THEN amount ELSE amount * ? END) AS quota",
 			PaymentProviderStripe, PaymentMethodStripe, common.QuotaPerUnit, []string{PaymentProviderCreem, PaymentProviderAdmin}, []string{PaymentMethodCreem, PaymentMethodAdmin}, common.QuotaPerUnit).
 		Group("user_id").Scan(&topUps).Error; err != nil {

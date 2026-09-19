@@ -1,28 +1,27 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
+import { DataTablePagination } from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { getSelf } from '@/lib/api'
 import { formatTimestampToDate } from '@/lib/format'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   createInvoice,
   getInvoiceSummary,
   getInvoices,
-  invoiceFileUrl,
   type InvoiceApplication,
-  type InvoiceSummary,
 } from './api'
+import { InvoiceDownloadButton } from './invoice-download-button'
 
 const money = (cents: number) => (cents / 100).toFixed(2)
 
@@ -36,9 +35,30 @@ const invoiceStatuses = {
 >
 
 export function Invoices() {
-  const [summary, setSummary] = useState<InvoiceSummary | null>(null)
-  const [allowed, setAllowed] = useState(false)
-  const [items, setItems] = useState<InvoiceApplication[]>([])
+  const userId = useAuthStore((state) => state.auth.user?.id)
+  const queryClient = useQueryClient()
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 })
+  const summaryQuery = useQuery({
+    queryKey: ['invoice-summary', userId],
+    queryFn: getInvoiceSummary,
+  })
+  const summary = summaryQuery.data?.summary
+  const allowed = summaryQuery.data?.settings.allowed ?? false
+  const invoicesQuery = useQuery({
+    queryKey: ['invoices', userId, pagination],
+    queryFn: () => getInvoices(pagination.pageIndex + 1, pagination.pageSize),
+    enabled: allowed,
+  })
+  const items = invoicesQuery.data?.items ?? []
+  const table = useReactTable<InvoiceApplication>({
+    columns: [],
+    data: items,
+    getCoreRowModel: getCoreRowModel(),
+    manualPagination: true,
+    rowCount: invoicesQuery.data?.total ?? 0,
+    state: { pagination },
+    onPaginationChange: setPagination,
+  })
   const [type, setType] = useState<'general' | 'special'>('general')
   const [amount, setAmount] = useState('')
   const [title, setTitle] = useState('')
@@ -50,35 +70,21 @@ export function Invoices() {
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const refresh = async () => {
-    try {
-      const summaryResponse = await getInvoiceSummary()
-      setAllowed(summaryResponse.settings.allowed)
-      const invoices = summaryResponse.settings.allowed
-        ? await getInvoices()
-        : { items: [] as InvoiceApplication[] }
-      setSummary(summaryResponse.summary)
-      setItems(invoices.items)
-      if (!email) {
-        const self = await getSelf()
-        setEmail(self.data?.email ?? '')
-      }
-    } catch {
-      toast.error('加载开票信息失败')
-    }
-  }
-
   useEffect(() => {
-    void refresh()
-  }, [])
+    let active = true
+    void getSelf()
+      .then((self) => {
+        if (active) setEmail((current) => current || self.data?.email || '')
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [userId])
 
   const submit = async () => {
     const amountCents = Math.round(Number(amount) * 100)
-    if (
-      !Number.isFinite(amountCents) ||
-      amountCents <= 0 ||
-      !title.trim()
-    ) {
+    if (!Number.isFinite(amountCents) || amountCents <= 0 || !title.trim()) {
       toast.error('请输入有效的金额和发票抬头')
       return
     }
@@ -97,7 +103,11 @@ export function Invoices() {
       })
       toast.success('开票申请已提交')
       setAmount('')
-      await refresh()
+      setPagination((current) => ({ ...current, pageIndex: 0 }))
+      await Promise.all([
+        summaryQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ['invoices', userId] }),
+      ])
     } catch {
       toast.error('提交开票申请失败')
     } finally {
@@ -110,7 +120,11 @@ export function Invoices() {
       <SectionPageLayout>
         <SectionPageLayout.Title>开票中心</SectionPageLayout.Title>
         <SectionPageLayout.Content>
-          <p className='text-muted-foreground text-sm'>加载中...</p>
+          {summaryQuery.isError ? (
+            <ErrorState onRetry={() => void summaryQuery.refetch()} />
+          ) : (
+            <p className='text-muted-foreground text-sm'>加载中...</p>
+          )}
         </SectionPageLayout.Content>
       </SectionPageLayout>
     )
@@ -157,7 +171,7 @@ export function Invoices() {
           </div>
 
           {summary.unverified_orders > 0 && (
-            <p className='text-muted-foreground rounded-lg bg-muted/40 px-3 py-2 text-sm'>
+            <p className='text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 text-sm'>
               部分历史订单没有核验的人民币实付金额，无法开票。
             </p>
           )}
@@ -185,8 +199,9 @@ export function Invoices() {
               </div>
 
               {type === 'special' && (
-                <div className='rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive'>
-                  专票需在审核通过前由您自行承担额外 5% 税点，费用线下收取，请先与客服确认收款后再提交。
+                <div className='border-destructive/30 bg-destructive/5 text-destructive rounded-lg border px-3 py-2 text-sm'>
+                  专票需在审核通过前由您自行承担额外 5%
+                  税点，费用线下收取，请先与客服确认收款后再提交。
                 </div>
               )}
 
@@ -271,11 +286,19 @@ export function Invoices() {
               <CardTitle className='text-base'>开票记录</CardTitle>
             </CardHeader>
             <CardContent className='space-y-3'>
-              {items.length === 0 && (
-                <p className='text-muted-foreground py-8 text-center text-sm'>
-                  暂无开票记录
-                </p>
+              {invoicesQuery.isError && (
+                <ErrorState onRetry={() => void invoicesQuery.refetch()} />
               )}
+              {invoicesQuery.isLoading && (
+                <p className='text-muted-foreground text-sm'>加载中...</p>
+              )}
+              {!invoicesQuery.isError &&
+                !invoicesQuery.isLoading &&
+                items.length === 0 && (
+                  <p className='text-muted-foreground py-8 text-center text-sm'>
+                    暂无开票记录
+                  </p>
+                )}
               {items.map((item) => (
                 <div
                   key={item.id}
@@ -300,16 +323,12 @@ export function Invoices() {
                       copyable={false}
                     />
                     {item.status === 'approved' && (
-                      <a
-                        className='text-primary text-sm underline'
-                        href={invoiceFileUrl(item.id)}
-                      >
-                        下载发票
-                      </a>
+                      <InvoiceDownloadButton invoice={item} />
                     )}
                   </div>
                 </div>
               ))}
+              <DataTablePagination table={table} compact />
             </CardContent>
           </Card>
         </div>

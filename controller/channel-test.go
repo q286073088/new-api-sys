@@ -69,7 +69,7 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 	return rootUser.Id, nil
 }
 
-func testChannel(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) (outcome testResult) {
+func testChannel(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool, recoveryProbe bool) (outcome testResult) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -172,7 +172,11 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	group, _ := model.GetUserGroup(testUserID, false)
 	c.Set("group", group)
 
-	newAPIError := middleware.SetupContextForChannelTest(c, channel, testModel)
+	setupChannel := middleware.SetupContextForSelectedChannel
+	if recoveryProbe {
+		setupChannel = middleware.SetupContextForChannelTest
+	}
+	newAPIError := setupChannel(c, channel, testModel)
 	if newAPIError != nil {
 		return testResult{
 			context:     c,
@@ -891,7 +895,7 @@ func TestChannel(c *gin.Context) {
 	if c.Request != nil {
 		requestCtx = c.Request.Context()
 	}
-	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream)
+	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream, true)
 	if result.localErr != nil {
 		resp := gin.H{
 			"success": false,
@@ -941,7 +945,7 @@ func testChannelForHealthCheck(ctx context.Context, channel *model.Channel, test
 	}
 	isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 	tik := time.Now()
-	result := testChannel(ctx, channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
+	result := testChannel(ctx, channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), true)
 	milliseconds := time.Since(tik).Milliseconds()
 	if ctx.Err() != nil {
 		return summary
@@ -974,7 +978,14 @@ func testChannelForHealthCheck(ctx context.Context, channel *model.Channel, test
 		summary.Disabled++
 	}
 
-	if result.localErr == nil && !isChannelEnabled && service.ShouldEnableChannel(newAPIError, channel.Status) {
+	// A healthy probe may restore an individual key even while other keys
+	// keep the channel enabled. Never revive manually disabled keys/channels.
+	probeStatus := channel.Status
+	if channel.ChannelInfo.IsMultiKey && channel.Status != common.ChannelStatusManuallyDisabled && result.context != nil {
+		index := common.GetContextKeyInt(result.context, constant.ContextKeyChannelMultiKeyIndex)
+		probeStatus = channel.ChannelInfo.MultiKeyStatusList[index]
+	}
+	if result.localErr == nil && service.ShouldEnableChannel(newAPIError, probeStatus) {
 		if service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name) {
 			summary.Enabled++
 		}
@@ -1133,9 +1144,11 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 }
 
 // runAvailableModelTests probes each configured model using the same group
-// priority order as normal routing. Each model is considered available when the
-// first routed channel exists; later channels are used only for retry.
+// priority order as normal routing. Stop only after a real probe succeeds.
 func runAvailableModelTests(ctx context.Context, testUserID int, notify bool, report func(processed, total int)) (channelTestSummary, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	models := operation_setting.GetMonitorSetting().TestModels()
 	if len(models) == 0 {
 		return channelTestSummary{}, errors.New("available model test mode requires at least one model")
@@ -1156,21 +1169,14 @@ func runAvailableModelTests(ctx context.Context, testUserID int, notify bool, re
 		if len(channels) == 0 {
 			summary.Failed++
 		}
-		for i, candidate := range channels {
+		for _, candidate := range channels {
 			if ctx != nil && ctx.Err() != nil {
-				break
-			}
-			if i == 0 {
-				summary.Tested++
-				if ctx != nil && ctx.Err() == nil {
-					summary.Succeeded++
-				}
 				break
 			}
 			if candidate.Status != common.ChannelStatusEnabled {
 				continue
 			}
-			result := testChannel(ctx, candidate, testUserID, modelName, "", shouldUseStreamForAutomaticChannelTest(candidate))
+			result := testChannel(ctx, candidate, testUserID, modelName, "", shouldUseStreamForAutomaticChannelTest(candidate), false)
 			summary.Tested++
 			if result.localErr == nil && result.newAPIError == nil {
 				summary.Succeeded++
@@ -1197,7 +1203,7 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 		if mode == operation_setting.ChannelTestModeAutoBanOnly && !channel.GetAutoBan() {
 			continue
 		}
-		if mode == operation_setting.ChannelTestModePassiveRecovery && channel.Status != common.ChannelStatusAutoDisabled {
+		if mode == operation_setting.ChannelTestModePassiveRecovery && channel.Status != common.ChannelStatusAutoDisabled && !channel.HasAutoDisabledKeys() {
 			continue
 		}
 		selected = append(selected, channel)

@@ -32,17 +32,57 @@ export type InvoiceApplication = {
 
 export async function getInvoiceSummary() {
   const response = await api.get('/api/user/invoice/summary')
-  return requireServerSuccess(response.data).data as { summary: InvoiceSummary; settings: { enabled: boolean; allowed: boolean } }
+  return requireServerSuccess(response.data).data as {
+    summary: InvoiceSummary
+    settings: { enabled: boolean; allowed: boolean }
+  }
 }
 
-export async function getInvoices() {
-  const response = await api.get('/api/user/invoice', { params: { p: 1, page_size: 100 } })
-  return requireServerSuccess(response.data).data as { items: InvoiceApplication[]; total: number }
+export async function getInvoices(page: number, pageSize: number) {
+  const response = await api.get('/api/user/invoice', {
+    params: { p: page, page_size: pageSize },
+  })
+  return requireServerSuccess(response.data).data as {
+    items: InvoiceApplication[]
+    total: number
+  }
 }
 
-export async function createInvoice(payload: Omit<InvoiceApplication, 'id' | 'user_id' | 'status' | 'file_name' | 'admin_note' | 'created_at' | 'reviewed_at' | 'tax_rate' | 'extra_tax_cents'>) {
+export async function createInvoice(
+  payload: Omit<
+    InvoiceApplication,
+    | 'id'
+    | 'user_id'
+    | 'status'
+    | 'file_name'
+    | 'admin_note'
+    | 'created_at'
+    | 'reviewed_at'
+    | 'tax_rate'
+    | 'extra_tax_cents'
+  >
+) {
   const response = await api.post('/api/user/invoice', payload)
   return requireServerSuccess(response.data).data as InvoiceApplication
 }
 
-export function invoiceFileUrl(id: number) { return `/api/user/invoice/${id}/file` }
+export async function downloadInvoiceFile(
+  id: number,
+  filename = 'invoice.pdf'
+) {
+  const response = await api.get(`/api/user/invoice/${id}/file`, {
+    responseType: 'blob',
+  })
+  if (response.data.type.includes('application/json')) {
+    requireServerSuccess(JSON.parse(await response.data.text()))
+    throw new Error('发票文件暂不可用')
+  }
+  const url = URL.createObjectURL(response.data)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename || 'invoice.pdf'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}

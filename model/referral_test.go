@@ -217,6 +217,8 @@ func TestReferralManualQuotaAdd(t *testing.T) {
 					assert.EqualValues(t, 3, emails)
 				})
 			}
+			_, giftErr := AdjustUserQuota(3, common.RoleRootUser, "add", 5000, QuotaCreditOptions{Gift: true})
+			require.NoError(t, giftErr)
 			invitees, _, err := GetReferralInvitees(2, 0, &common.PageInfo{Page: 1, PageSize: 10})
 			require.NoError(t, err)
 			require.Len(t, invitees, 1)
@@ -239,12 +241,12 @@ func TestReferralManualQuotaAdd(t *testing.T) {
 					var buyer, parent User
 					require.NoError(t, DB.First(&buyer, 3).Error)
 					require.NoError(t, DB.First(&parent, 2).Error)
-					assert.Equal(t, 40000, buyer.Quota)
+					assert.Equal(t, 45000, buyer.Quota)
 					assert.Equal(t, 1617, parent.AffQuota)
 					for _, expected := range []struct {
 						model any
 						count int64
-					}{{&TopUp{}, 3}, {&ReferralReward{}, 4}, {&EmailNotification{}, 7}} {
+					}{{&TopUp{}, 4}, {&ReferralReward{}, 4}, {&EmailNotification{}, 7}} {
 						var count int64
 						require.NoError(t, DB.Model(expected.model).Count(&count).Error)
 						assert.Equal(t, expected.count, count)

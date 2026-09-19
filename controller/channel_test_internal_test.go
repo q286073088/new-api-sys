@@ -172,7 +172,7 @@ func TestChannelTestPromptAndResponseLog(t *testing.T) {
 				channel.Key = `{"access_token":"test-key","account_id":"test-account"}`
 			}
 			require.NoError(t, db.Create(channel).Error)
-			result := testChannel(context.Background(), channel, root.Id, "gpt-4o-mini", tc.endpoint, tc.stream)
+			result := testChannel(context.Background(), channel, root.Id, "gpt-4o-mini", tc.endpoint, tc.stream, true)
 			wantOutput, wantType := answer, model.LogTypeConsume
 			if tc.status == 200 {
 				require.NoError(t, result.localErr)
@@ -236,7 +236,7 @@ func TestNodeChannelExclusionsRouteAndSkipHealthChecks(t *testing.T) {
 	assert.Equal(t, "node_channel_excluded", string(kind))
 	assert.Equal(t, channels[1:], selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModeScheduledAll))
 	assert.Equal(t, channelTestSummary{}, testChannelForHealthCheck(context.Background(), channels[0], 0, true, 1))
-	result := testChannel(context.Background(), channels[0], 0, "", "", false)
+	result := testChannel(context.Background(), channels[0], 0, "", "", false, true)
 	require.ErrorContains(t, result.localErr, "NODE_EXCLUDED_CHANNEL_IDS")
 	var stored model.Channel
 	require.NoError(t, db.First(&stored, channels[0].Id).Error)
@@ -771,4 +771,54 @@ func TestTestAllChannelsRejectsExistingActiveTask(t *testing.T) {
 	require.Equal(t, http.StatusConflict, recorder.Code)
 	require.Contains(t, recorder.Body.String(), existing.TaskID)
 	require.Contains(t, recorder.Body.String(), "已有通道测试任务正在运行或等待中")
+}
+
+func TestAvailableModelTestsActuallyProbeAndFailOver(t *testing.T) {
+	db := setupChannelProbeTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}))
+	withTieredBillingConfig(t, map[string]string{"gpt-4o-mini": "tiered_expr"}, map[string]string{"gpt-4o-mini": "p + c"})
+	monitor := operation_setting.GetMonitorSetting()
+	previous, oldTimeout := *monitor, constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { *monitor = previous; constant.StreamingTimeout = oldTimeout })
+	monitor.ChannelTestModels = "gpt-4o-mini"
+	root := model.User{Username: "available-model-test", Role: common.RoleRootUser, Status: common.UserStatusEnabled, Group: "default"}
+	require.NoError(t, db.Create(&root).Error)
+	var hits [3]atomic.Int32
+	var allFail atomic.Bool
+	for i := range 3 {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits[i].Add(1)
+			if r.Header.Get("Authorization") != "Bearer test-key" {
+				t.Errorf("availability test selected a disabled key")
+			}
+			if i == 0 || allFail.Load() {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadGateway)
+				_, _ = io.WriteString(w, `{"error":{"message":"unavailable","type":"server_error"}}`)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"id":"test","model":"gpt-4o-mini","choices":[{"index":0,"message":{"role":"assistant","content":"391"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11}}`)
+		}))
+		t.Cleanup(upstream.Close)
+		priority := int64(3 - i)
+		channel := model.Channel{Name: fmt.Sprintf("available-%d", i), Type: constant.ChannelTypeOpenAI, Key: "test-key", BaseURL: &upstream.URL, Models: "gpt-4o-mini", Group: "default", Status: common.ChannelStatusEnabled, Priority: &priority}
+		channel.Key = "disabled-key\ntest-key"
+		channel.ChannelInfo.IsMultiKey = true
+		channel.ChannelInfo.MultiKeySize = 2
+		channel.ChannelInfo.MultiKeyStatusList = map[int]int{0: common.ChannelStatusAutoDisabled}
+		require.NoError(t, db.Create(&channel).Error)
+		require.NoError(t, channel.AddAbilities(nil))
+	}
+	summary, err := runAvailableModelTests(t.Context(), root.Id, false, nil)
+	require.NoError(t, err)
+	assert.Equal(t, channelTestSummary{Tested: 2, Succeeded: 1, Failed: 1}, summary)
+	assert.Equal(t, int32(1), hits[0].Load())
+	assert.Equal(t, int32(1), hits[1].Load())
+	assert.Zero(t, hits[2].Load(), "stop after the successful upstream")
+	allFail.Store(true)
+	summary, err = runAvailableModelTests(t.Context(), root.Id, false, nil)
+	require.NoError(t, err)
+	assert.Equal(t, channelTestSummary{Tested: 3, Failed: 3}, summary)
 }

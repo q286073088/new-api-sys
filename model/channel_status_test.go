@@ -41,7 +41,13 @@ func TestChannelHealthProbeDatabaseMatrix(t *testing.T) {
 			assert.Equal(t, "auto-b", key)
 			key, _, testErr := channel.GetNextTestKey()
 			require.Nil(t, testErr)
-			assert.Equal(t, "auto-b", key, "enabled channels must continue testing a usable key")
+			assert.Equal(t, "auto-a", key, "partially healthy channels must probe remaining disabled keys")
+			require.True(t, UpdateChannelStatus(channel.Id, "auto-a", common.ChannelStatusEnabled, ""))
+			require.NoError(t, DB.First(&channel, channel.Id).Error)
+			assert.Equal(t, common.ChannelStatusEnabled, channel.Status)
+			assert.NotContains(t, channel.ChannelInfo.MultiKeyStatusList, 1)
+			require.False(t, UpdateChannelStatus(channel.Id, "manual", common.ChannelStatusEnabled, ""))
+			require.True(t, UpdateChannelStatus(channel.Id, "auto-a", common.ChannelStatusAutoDisabled, "offline"))
 
 			require.True(t, UpdateChannelStatus(channel.Id, "auto-b", common.ChannelStatusAutoDisabled, "offline"))
 			require.NoError(t, DB.First(&channel, channel.Id).Error)
@@ -165,4 +171,33 @@ func TestSaveStatusStateFromSingleKeySnapshotPreservesUnownedColumns(t *testing.
 	otherInfo := stored.GetOtherInfo()
 	assert.Equal(t, "manual operation", otherInfo["status_reason"])
 	assert.Equal(t, float64(1234), otherInfo["status_time"])
+}
+
+func TestChannelRecoveryImmediatelyRestoresRouting(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			setupReferralDatabase(t, dialect, false)
+			oldMemory := common.MemoryCacheEnabled
+			oldChannels, oldGroups, oldConfigs := channelsIDM, group2model2channels, channel2advancedCustomConfig
+			common.MemoryCacheEnabled = true
+			t.Cleanup(func() {
+				common.MemoryCacheEnabled = oldMemory
+				channelsIDM, group2model2channels, channel2advancedCustomConfig = oldChannels, oldGroups, oldConfigs
+			})
+			for _, multi := range []bool{false, true} {
+				channel := Channel{Name: "recover", Key: "key", Status: common.ChannelStatusEnabled, Models: "recovery-model", Group: "default"}
+				channel.ChannelInfo.IsMultiKey = multi
+				require.NoError(t, DB.Create(&channel).Error)
+				require.NoError(t, channel.AddAbilities(nil))
+				InitChannelCache()
+				require.True(t, UpdateChannelStatus(channel.Id, "key", common.ChannelStatusAutoDisabled, "offline"))
+				assert.NotContains(t, group2model2channels["default"]["recovery-model"], channel.Id)
+				require.True(t, UpdateChannelStatus(channel.Id, "key", common.ChannelStatusEnabled, ""))
+				assert.Contains(t, group2model2channels["default"]["recovery-model"], channel.Id)
+				var ability Ability
+				require.NoError(t, DB.Where("channel_id = ?", channel.Id).First(&ability).Error)
+				assert.True(t, ability.Enabled)
+			}
+		})
+	}
 }
