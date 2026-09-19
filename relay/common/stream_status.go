@@ -29,7 +29,20 @@ type StreamErrorEntry struct {
 }
 
 // StreamDiagnostics is published after all stream workers have stopped.
+type StreamEventDiagnostic struct {
+	At    time.Time `json:"at"`
+	Type  string    `json:"type"`
+	Bytes int       `json:"bytes"`
+}
+
 type StreamDiagnostics struct {
+	RecentEvents             []StreamEventDiagnostic
+	UsageEventSeen           bool
+	TerminalEventSeen        bool
+	UpstreamBodyClosedAt     time.Time
+	ScannerErrorAt           time.Time
+	ScannerErrorAfterCleanup bool
+
 	StartedAt           time.Time
 	EndedAt             time.Time
 	FirstDataAt         time.Time

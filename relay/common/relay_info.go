@@ -102,17 +102,18 @@ type RelayPerformanceAttempt struct {
 }
 
 type RelayInfo struct {
-	TokenId            int
-	TokenKey           string
-	TokenGroup         string
-	UserId             int
-	UsingGroup         string // 使用的分组，当auto跨分组重试时，会变动
-	UserGroup          string // 用户所在分组
-	TokenUnlimited     bool
-	StartTime          time.Time
-	FirstResponseTime  time.Time
-	isFirstResponse    bool
-	PerformanceAttempt *RelayPerformanceAttempt
+	MissingBillableUsage bool
+	TokenId              int
+	TokenKey             string
+	TokenGroup           string
+	UserId               int
+	UsingGroup           string // 使用的分组，当auto跨分组重试时，会变动
+	UserGroup            string // 用户所在分组
+	TokenUnlimited       bool
+	StartTime            time.Time
+	FirstResponseTime    time.Time
+	isFirstResponse      bool
+	PerformanceAttempt   *RelayPerformanceAttempt
 	//SendLastReasoningResponse bool
 	IsStream               bool
 	IsGeminiBatchEmbedding bool
@@ -228,6 +229,7 @@ type RelayInfo struct {
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	info.UpstreamDiagnostics = nil
+	info.MissingBillableUsage = false
 	info.FinalRequestRelayFormat = ""
 	info.RequestConversionChain = nil
 	info.InitRequestConversionChain()

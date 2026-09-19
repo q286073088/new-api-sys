@@ -1198,6 +1198,8 @@ export function DetailsDialog(props: DetailsDialogProps) {
         {props.isAdmin && other?.admin_info?.request_diagnostics && (
           <RequestDiagnosticsSection
             diagnostics={other.admin_info.request_diagnostics}
+            log={props.log}
+            streamStatus={other.stream_status}
             endReason={other.stream_status?.end_reason}
           />
         )}

@@ -18,12 +18,17 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
-import type { RequestDiagnostics } from '../../types'
+import { CopyButton } from '@/components/copy-button'
+
+import type { UsageLog } from '../../data/schema'
+import type { LogOtherData, RequestDiagnostics } from '../../types'
 import { DetailRow, DetailSection } from './log-detail-layout'
 
 export function RequestDiagnosticsSection(props: {
   diagnostics: RequestDiagnostics
   endReason?: string
+  log?: UsageLog
+  streamStatus?: LogOtherData['stream_status']
 }) {
   const { t } = useTranslation()
   const data = props.diagnostics
@@ -46,6 +51,20 @@ export function RequestDiagnosticsSection(props: {
   }
 
   const fields: [string, string | number | undefined][] = [
+    [
+      '网关请求 ID（用于本地查询）',
+      data.gateway_request_id || props.log?.request_id,
+    ],
+    ['诊断版本', data.diagnostics_version],
+    ['程序版本', data.gateway_version],
+    ['请求路径', data.request_path],
+    ['请求开始时间（UTC）', data.request_started_at],
+    ['诊断记录时间（UTC）', data.recorded_at],
+    ['流开始时间（UTC）', data.stream_started_at],
+    ['流结束时间（UTC）', data.stream_ended_at],
+    ['最后上游数据时间（UTC）', data.last_upstream_data_at],
+    ['网关关闭上游时间（UTC）', data.upstream_body_closed_at],
+    ['流读取报错时间（UTC）', data.scanner_error_at],
     [t('Node'), data.node_name],
     [t('Request host'), data.request_host],
     [t('Cloudflare Ray ID'), data.cloudflare_ray],
@@ -92,8 +111,52 @@ export function RequestDiagnosticsSection(props: {
     [t('Client write timeout'), data.client_write_timeout_seconds],
   ]
 
+  const evidence = JSON.stringify(
+    {
+      log_id: props.log?.id,
+      gateway_request_id: props.log?.request_id || data.gateway_request_id,
+      upstream_request_id:
+        props.log?.upstream_request_id || data.upstream_request_id,
+      channel_id: props.log?.channel,
+      model: props.log?.model_name,
+      group: props.log?.group,
+      log_created_at: props.log?.created_at,
+      error: props.log?.content,
+      charged_quota: props.log?.quota,
+      prompt_tokens: props.log?.prompt_tokens,
+      completion_tokens: props.log?.completion_tokens,
+      stream_status: props.streamStatus,
+      diagnostics: data,
+    },
+    null,
+    2
+  )
+  const flags: [string, boolean | undefined][] = [
+    ['收到 usage 字段（不代表可结算）', data.usage_event_seen],
+    ['收到协议结束事件', data.terminal_event_seen],
+    ['未取得可用计费信息', data.missing_billable_usage],
+    ['流读取错误发生于网关清理之后', data.scanner_error_after_cleanup],
+  ]
   return (
     <DetailSection label={t('Request diagnostics')}>
+      <div className='mb-3 flex items-center justify-between gap-2'>
+        <p className='text-muted-foreground text-xs'>
+          复制后可直接提供给排查人员；本地日志请使用网关请求 ID 查询。
+        </p>
+        <CopyButton
+          value={evidence}
+          size='sm'
+          variant='outline'
+          aria-label='复制完整诊断'
+        >
+          复制完整诊断
+        </CopyButton>
+      </div>
+      {flags.map(([label, value]) =>
+        value !== undefined ? (
+          <DetailRow key={label} label={label} value={value ? '是' : '否'} />
+        ) : null
+      )}
       {explanation && (
         <p className='text-muted-foreground mb-3 text-xs'>{explanation}</p>
       )}
@@ -101,6 +164,18 @@ export function RequestDiagnosticsSection(props: {
         value !== undefined && value !== '' ? (
           <DetailRow key={label} label={label} value={value} mono />
         ) : null
+      )}
+      {!!data.recent_upstream_events?.length && (
+        <div className='my-3 space-y-1'>
+          <p className='text-muted-foreground text-xs'>
+            最近上游事件（最多 8 条，不含正文；UTC）
+          </p>
+          {data.recent_upstream_events.map((event, index) => (
+            <p key={index} className='font-mono text-xs break-all'>
+              {event.at} · {event.type} · {event.bytes} 字节
+            </p>
+          ))}
+        </div>
       )}
       {timings.map(([label, value]) =>
         value !== undefined ? (

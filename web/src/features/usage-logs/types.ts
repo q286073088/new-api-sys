@@ -114,6 +114,23 @@ export interface ToolSurchargeItem {
 }
 
 export interface RequestDiagnostics {
+  diagnostics_version?: number
+  gateway_request_id?: string
+  gateway_version?: string
+  request_path?: string
+  request_started_at?: string
+  recorded_at?: string
+  stream_started_at?: string
+  stream_ended_at?: string
+  last_upstream_data_at?: string
+  upstream_body_closed_at?: string
+  scanner_error_at?: string
+  scanner_error_after_cleanup?: boolean
+  usage_event_seen?: boolean
+  terminal_event_seen?: boolean
+  missing_billable_usage?: boolean
+  recent_upstream_events?: { at: string; type: string; bytes: number }[]
+
   request_host?: string
   cloudflare_ray?: string
   client_context_cause?: string

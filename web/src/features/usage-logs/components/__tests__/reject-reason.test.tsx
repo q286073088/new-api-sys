@@ -122,6 +122,17 @@ const canceledStream: LogOtherData = {
 }
 
 describe('administrator request diagnostics', () => {
+  test('copies a self-contained administrator diagnostic bundle', async () => {
+    const user = userEvent.setup()
+    renderDetails(true, canceledStream)
+    await user.click(screen.getByRole('button', { name: '复制完整诊断' }))
+    const report = JSON.parse(await navigator.clipboard.readText())
+    expect(report.log_id).toBeDefined()
+    expect(report.stream_status.end_reason).toBe('client_gone')
+    expect(report.diagnostics.upstream_request_id).toBe('upstream-trace-123')
+    expect(report.diagnostics.cloudflare_ray).toBe('ray-fixture-SJC')
+  })
+
   test('shows cancellation evidence, zero traffic and an unlimited timeout to admins', () => {
     renderDetails(true, canceledStream)
     expect(screen.getByText('Request diagnostics')).toBeInTheDocument()
@@ -142,6 +153,9 @@ describe('administrator request diagnostics', () => {
 
   test('hides administrator connection details from users even if present in the supplied data', () => {
     renderDetails(false, canceledStream)
+    expect(
+      screen.queryByRole('button', { name: '复制完整诊断' })
+    ).not.toBeInTheDocument()
     expect(screen.queryByText('Request diagnostics')).not.toBeInTheDocument()
     expect(screen.queryByText('upstream-trace-123')).not.toBeInTheDocument()
     expect(screen.queryByText('ExampleClient/1.0')).not.toBeInTheDocument()

@@ -411,6 +411,7 @@ func ValidateTextUsage(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage
 			return nil
 		}
 	}
+	relayInfo.MissingBillableUsage = true
 	return missingUsageError(ctx)
 }
 
@@ -483,6 +484,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 		// Keep the reservation open for a different channel. Relay owns the
 		// final refund when every attempt fails.
+		relayInfo.MissingBillableUsage = true
 		return missingUsageError(ctx)
 	}
 	model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)

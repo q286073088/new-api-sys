@@ -22,21 +22,28 @@ func appendRelayRequestDiagnostics(ctx *gin.Context, info *relaycommon.RelayInfo
 	clientErr := ctx.Request.Context().Err()
 	streamFailed := ss != nil && (!ss.IsNormalEnd() || ss.HasErrors() || ss.EndError != nil)
 	upstreamFailed := upstream != nil && (upstream.Err != nil || upstream.StatusCode >= 400)
-	if !streamFailed && !upstreamFailed && clientErr == nil {
+	if !streamFailed && !upstreamFailed && clientErr == nil && !info.MissingBillableUsage {
 		return
 	}
 
 	diagnostics := map[string]any{
-		"node_name":         common.NodeName,
-		"client_protocol":   ctx.Request.Proto,
-		"client_user_agent": relayDiagnosticText(info, ctx.Request.UserAgent()),
-		"attempt_number":    info.RetryIndex + 1,
-		"request_host":      relayDiagnosticText(info, ctx.Request.Host),
+		"diagnostics_version":    2,
+		"gateway_request_id":     info.RequestId,
+		"gateway_version":        common.Version,
+		"request_path":           ctx.Request.URL.Path,
+		"recorded_at":            time.Now().UTC().Format(time.RFC3339Nano),
+		"missing_billable_usage": info.MissingBillableUsage,
+		"node_name":              common.NodeName,
+		"client_protocol":        ctx.Request.Proto,
+		"client_user_agent":      relayDiagnosticText(info, ctx.Request.UserAgent()),
+		"attempt_number":         info.RetryIndex + 1,
+		"request_host":           relayDiagnosticText(info, ctx.Request.Host),
 	}
 	if ray := ctx.GetHeader("CF-Ray"); ray != "" {
 		diagnostics["cloudflare_ray"] = relayDiagnosticText(info, ray)
 	}
 	if !info.StartTime.IsZero() {
+		diagnostics["request_started_at"] = info.StartTime.UTC().Format(time.RFC3339Nano)
 		diagnostics["request_elapsed_ms"] = max(0, time.Since(info.StartTime).Milliseconds())
 	}
 	if ctx.Request.ContentLength >= 0 {
@@ -109,6 +116,18 @@ func appendRelayRequestDiagnostics(ctx *gin.Context, info *relaycommon.RelayInfo
 	}
 	if ss != nil && ss.Diagnostics != nil {
 		stream := ss.Diagnostics
+		diagnostics["stream_started_at"] = stream.StartedAt.UTC().Format(time.RFC3339Nano)
+		diagnostics["stream_ended_at"] = stream.EndedAt.UTC().Format(time.RFC3339Nano)
+		diagnostics["recent_upstream_events"] = stream.RecentEvents
+		diagnostics["usage_event_seen"] = stream.UsageEventSeen
+		diagnostics["terminal_event_seen"] = stream.TerminalEventSeen
+		if !stream.UpstreamBodyClosedAt.IsZero() {
+			diagnostics["upstream_body_closed_at"] = stream.UpstreamBodyClosedAt.UTC().Format(time.RFC3339Nano)
+		}
+		if !stream.ScannerErrorAt.IsZero() {
+			diagnostics["scanner_error_at"] = stream.ScannerErrorAt.UTC().Format(time.RFC3339Nano)
+			diagnostics["scanner_error_after_cleanup"] = stream.ScannerErrorAfterCleanup
+		}
 		diagnostics["stream_elapsed_ms"] = max(0, stream.EndedAt.Sub(stream.StartedAt).Milliseconds())
 		diagnostics["received_events"] = stream.ReceivedEvents
 		diagnostics["upstream_status"] = stream.UpstreamStatus
@@ -123,6 +142,7 @@ func appendRelayRequestDiagnostics(ctx *gin.Context, info *relaycommon.RelayInfo
 			diagnostics["first_event_elapsed_ms"] = max(0, stream.FirstDataAt.Sub(stream.StartedAt).Milliseconds())
 		}
 		if !stream.LastReadAt.IsZero() {
+			diagnostics["last_upstream_data_at"] = stream.LastReadAt.UTC().Format(time.RFC3339Nano)
 			diagnostics["last_upstream_activity_ms"] = max(0, stream.EndedAt.Sub(stream.LastReadAt).Milliseconds())
 		}
 		if stream.UpstreamReadError != nil {

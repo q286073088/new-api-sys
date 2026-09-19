@@ -3,6 +3,7 @@ package helper
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -92,6 +93,9 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	streamStartedAt := time.Now()
 	var firstDataAt, lastReadAt time.Time
 	var upstreamReadError error
+	var recentEvents []relaycommon.StreamEventDiagnostic
+	var usageEventSeen, terminalEventSeen, scannerErrorAfterCleanup bool
+	var upstreamBodyClosedAt, scannerErrorAt time.Time
 	receivedBeforeStream := info.ReceivedResponseCount
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -137,6 +141,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			cancel()
 			stop()
 			if resp.Body != nil {
+				upstreamBodyClosedAt = time.Now()
 				_ = resp.Body.Close()
 			}
 
@@ -276,6 +281,41 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			if data == "" {
 				continue
 			}
+			// Keep bounded structural metadata only, never model output or request content.
+			var event struct {
+				Type          string          `json:"type"`
+				Usage         json.RawMessage `json:"usage"`
+				UsageMetadata json.RawMessage `json:"usageMetadata"`
+				Response      struct {
+					Usage json.RawMessage `json:"usage"`
+				} `json:"response"`
+				Message struct {
+					Usage json.RawMessage `json:"usage"`
+				} `json:"message"`
+			}
+			eventType := "data"
+			if common.Unmarshal([]byte(data), &event) == nil {
+				switch event.Type {
+				case "response.created", "response.in_progress", "response.output_item.added", "response.output_item.done", "response.content_part.added", "response.content_part.done", "response.output_text.delta", "response.output_text.done", "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done", "message_start", "message_delta", "content_block_start", "content_block_delta", "content_block_stop", "ping", "error":
+					eventType = event.Type
+				case "response.completed", "response.incomplete", "response.failed", "message_stop":
+					eventType = event.Type
+					terminalEventSeen = true
+				}
+				for _, usage := range []json.RawMessage{event.Usage, event.UsageMetadata, event.Response.Usage, event.Message.Usage} {
+					if value := strings.TrimSpace(string(usage)); value != "" && value != "null" {
+						usageEventSeen = true
+					}
+				}
+			}
+			if strings.HasPrefix(data, "[DONE]") {
+				eventType = "[DONE]"
+				terminalEventSeen = true
+			}
+			if len(recentEvents) == 8 {
+				recentEvents = recentEvents[1:]
+			}
+			recentEvents = append(recentEvents, relaycommon.StreamEventDiagnostic{At: lastReadAt.UTC(), Type: eventType, Bytes: len(data)})
 			if !strings.HasPrefix(data, "[DONE]") {
 				if firstDataAt.IsZero() {
 					firstDataAt = lastReadAt
@@ -299,6 +339,8 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 
 		if err := scanner.Err(); err != nil {
 			if err != io.EOF {
+				scannerErrorAt = time.Now()
+				scannerErrorAfterCleanup = ctx.Err() != nil
 				// Closing the body during cleanup is a consequence of stopping,
 				// not evidence of a separate upstream failure.
 				if ctx.Err() == nil && c.Request.Context().Err() == nil {
@@ -326,18 +368,24 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	streamEndedAt := time.Now()
 	cleanup()
 	info.StreamStatus.Diagnostics = &relaycommon.StreamDiagnostics{
-		StartedAt:           streamStartedAt,
-		EndedAt:             streamEndedAt,
-		FirstDataAt:         firstDataAt,
-		LastReadAt:          lastReadAt,
-		ReceivedEvents:      info.ReceivedResponseCount - receivedBeforeStream,
-		UpstreamStatus:      resp.StatusCode,
-		UpstreamProtocol:    resp.Proto,
-		UpstreamReadError:   upstreamReadError,
-		IdleTimeoutSeconds:  int(streamingTimeout / time.Second),
-		WriteTimeoutSeconds: int(streamWriteTimeout / time.Second),
-		PingEnabled:         pingEnabled,
-		PingIntervalSeconds: int(pingInterval / time.Second),
+		RecentEvents:             recentEvents,
+		UsageEventSeen:           usageEventSeen,
+		TerminalEventSeen:        terminalEventSeen,
+		UpstreamBodyClosedAt:     upstreamBodyClosedAt,
+		ScannerErrorAt:           scannerErrorAt,
+		ScannerErrorAfterCleanup: scannerErrorAfterCleanup,
+		StartedAt:                streamStartedAt,
+		EndedAt:                  streamEndedAt,
+		FirstDataAt:              firstDataAt,
+		LastReadAt:               lastReadAt,
+		ReceivedEvents:           info.ReceivedResponseCount - receivedBeforeStream,
+		UpstreamStatus:           resp.StatusCode,
+		UpstreamProtocol:         resp.Proto,
+		UpstreamReadError:        upstreamReadError,
+		IdleTimeoutSeconds:       int(streamingTimeout / time.Second),
+		WriteTimeoutSeconds:      int(streamWriteTimeout / time.Second),
+		PingEnabled:              pingEnabled,
+		PingIntervalSeconds:      int(pingInterval / time.Second),
 	}
 	if info.StreamStatus.IsNormalEnd() && !info.StreamStatus.HasErrors() {
 		logger.LogInfo(c, fmt.Sprintf("stream ended: %s", info.StreamStatus.Summary()))
