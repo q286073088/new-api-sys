@@ -107,6 +107,7 @@ const canceledStream: LogOtherData = {
   admin_info: {
     request_diagnostics: {
       client_context_error: 'context canceled',
+      downstream_read_error_at: '2026-09-20T02:04:50.502152115Z',
       cloudflare_ray: 'ray-fixture-SJC',
       client_user_agent: 'ExampleClient/1.0',
       upstream_request_id: 'upstream-trace-123',
@@ -128,6 +129,11 @@ describe('administrator request diagnostics', () => {
     await user.click(screen.getByRole('button', { name: '复制完整诊断' }))
     const report = JSON.parse(await navigator.clipboard.readText())
     expect(report.log_id).toBeDefined()
+    expect(report.diagnostics.downstream_read_error_at).toBe(
+      '2026-09-20 10:04:50.502'
+    )
+    expect(report.timezone).toBe('Asia/Shanghai (UTC+08:00)')
+    expect(report.log_created_at).not.toMatch(/Z$/)
     expect(report.stream_status.end_reason).toBe('client_gone')
     expect(report.diagnostics.upstream_request_id).toBe('upstream-trace-123')
     expect(report.diagnostics.cloudflare_ray).toBe('ray-fixture-SJC')
@@ -135,6 +141,7 @@ describe('administrator request diagnostics', () => {
 
   test('shows cancellation evidence, zero traffic and an unlimited timeout to admins', () => {
     renderDetails(true, canceledStream)
+    expect(screen.getByText('2026-09-20 10:04:50.502')).toBeInTheDocument()
     expect(screen.getByText('Request diagnostics')).toBeInTheDocument()
     expect(screen.getByText('ExampleClient/1.0')).toBeInTheDocument()
     expect(screen.getByText('upstream-trace-123')).toBeInTheDocument()

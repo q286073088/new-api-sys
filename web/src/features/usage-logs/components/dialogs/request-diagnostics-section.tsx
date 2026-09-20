@@ -24,6 +24,39 @@ import type { UsageLog } from '../../data/schema'
 import type { LogOtherData, RequestDiagnostics } from '../../types'
 import { DetailRow, DetailSection } from './log-detail-layout'
 
+// Legacy records store UTC ISO timestamps; new diagnostics already use Beijing time.
+function beijingDiagnosticTime(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return value
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return value
+  return new Date(date.getTime() + 8 * 3600_000)
+    .toISOString()
+    .slice(0, 23)
+    .replace('T', ' ')
+}
+
+const phaseLabels: Record<string, string> = {
+  request_received: '网关收到请求',
+  relay_middleware_started: '进入转发中间件',
+  relay_middleware_finished: '基础中间件完成',
+  performance_check_started: '性能检查开始',
+  performance_check_finished: '性能检查完成',
+  authentication_started: '认证开始',
+  authentication_finished: '认证完成',
+  rate_limit_started: '限流检查开始',
+  rate_limit_finished: '限流检查完成',
+  distribution_started: '模型解析与渠道分配开始',
+  request_body_read_started: '请求体读取开始',
+  request_body_read_finished: '请求体读取结束',
+  model_request_parsed: '模型信息解析完成',
+  channel_selected: '渠道选择完成',
+  request_validation_started: '请求校验开始',
+  request_validation_finished: '请求校验完成',
+  upstream_preparation_started: '上游连接准备开始',
+  upstream_request_started: '发起上游请求',
+  upstream_headers_finished: '等待上游响应头结束',
+}
+
 export function RequestDiagnosticsSection(props: {
   diagnostics: RequestDiagnostics
   endReason?: string
@@ -31,7 +64,25 @@ export function RequestDiagnosticsSection(props: {
   streamStatus?: LogOtherData['stream_status']
 }) {
   const { t } = useTranslation()
-  const data = props.diagnostics
+  const data: RequestDiagnostics = {
+    ...Object.fromEntries(
+      Object.entries(props.diagnostics).map(([key, value]) => [
+        key,
+        typeof value === 'string' &&
+        (key.endsWith('_at') || key.endsWith('_deadline'))
+          ? beijingDiagnosticTime(value)
+          : value,
+      ])
+    ),
+    timezone: 'Asia/Shanghai (UTC+08:00)',
+    recent_upstream_events: props.diagnostics.recent_upstream_events?.map(
+      (event) => ({ ...event, at: beijingDiagnosticTime(event.at) })
+    ),
+    request_phases: props.diagnostics.request_phases?.map((phase) => ({
+      ...phase,
+      at: beijingDiagnosticTime(phase.at),
+    })),
+  }
   let explanation: string | undefined
   if (data.downstream_write_error_kind === 'timeout') {
     explanation = t(
@@ -56,15 +107,19 @@ export function RequestDiagnosticsSection(props: {
       data.gateway_request_id || props.log?.request_id,
     ],
     ['诊断版本', data.diagnostics_version],
+    ['保活成功写出次数', data.downstream_keepalive?.written_count],
+    ['首次保活写出时间', data.downstream_keepalive?.first_written_at],
+    ['最后保活写出时间', data.downstream_keepalive?.last_written_at],
     ['程序版本', data.gateway_version],
     ['请求路径', data.request_path],
-    ['请求开始时间（UTC）', data.request_started_at],
-    ['诊断记录时间（UTC）', data.recorded_at],
-    ['流开始时间（UTC）', data.stream_started_at],
-    ['流结束时间（UTC）', data.stream_ended_at],
-    ['最后上游数据时间（UTC）', data.last_upstream_data_at],
-    ['网关关闭上游时间（UTC）', data.upstream_body_closed_at],
-    ['流读取报错时间（UTC）', data.scanner_error_at],
+    ['网关收到请求（北京时间）', data.gateway_received_at],
+    ['渠道选择完成后的计时起点', data.request_started_at],
+    ['诊断记录时间（北京时间）', data.recorded_at],
+    ['流开始时间（北京时间）', data.stream_started_at],
+    ['流结束时间（北京时间）', data.stream_ended_at],
+    ['最后上游数据时间（北京时间）', data.last_upstream_data_at],
+    ['网关关闭上游时间（北京时间）', data.upstream_body_closed_at],
+    ['流读取报错时间（北京时间）', data.scanner_error_at],
     [t('Node'), data.node_name],
     [t('Request host'), data.request_host],
     [t('Cloudflare Ray ID'), data.cloudflare_ray],
@@ -97,9 +152,15 @@ export function RequestDiagnosticsSection(props: {
     [t('Upstream request error'), data.upstream_error],
     [t('Upstream read error'), data.upstream_read_error],
     [t('Upstream events received'), data.received_events],
+    ['上游扫描行数', data.upstream_scanned_lines],
+    ['上游注释／保活行数', data.upstream_comment_lines],
+    ['上游空行数', data.upstream_blank_lines],
+    ['上游其他非 data 行数', data.upstream_other_lines],
   ]
   const timings: [string, number | undefined][] = [
-    [t('Total request time'), data.request_elapsed_ms],
+    ['网关全程耗时（截至记录）', data.gateway_elapsed_ms],
+    ['渠道选择完成前耗时', data.before_relay_elapsed_ms],
+    ['渠道选择完成后耗时', data.request_elapsed_ms],
     [t('Response header wait'), data.headers_elapsed_ms],
     [t('Stream duration'), data.stream_elapsed_ms],
     [t('First stream event wait'), data.first_event_elapsed_ms],
@@ -120,13 +181,24 @@ export function RequestDiagnosticsSection(props: {
       channel_id: props.log?.channel,
       model: props.log?.model_name,
       group: props.log?.group,
-      log_created_at: props.log?.created_at,
+      log_created_at: props.log?.created_at
+        ? beijingDiagnosticTime(
+            new Date(props.log.created_at * 1000).toISOString()
+          )
+        : undefined,
+      timezone: 'Asia/Shanghai (UTC+08:00)',
       error: props.log?.content,
       charged_quota: props.log?.quota,
       prompt_tokens: props.log?.prompt_tokens,
       completion_tokens: props.log?.completion_tokens,
       stream_status: props.streamStatus,
-      diagnostics: data,
+      diagnostics: {
+        ...data,
+        request_phases: data.request_phases?.map((phase) => ({
+          ...phase,
+          label: phaseLabels[phase.name] ?? phase.name,
+        })),
+      },
     },
     null,
     2
@@ -152,6 +224,28 @@ export function RequestDiagnosticsSection(props: {
           复制完整诊断
         </CopyButton>
       </div>
+      <p className='text-muted-foreground mb-3 text-xs'>
+        以下时间均为北京时间（UTC+08:00），耗时使用单调时钟计算。
+      </p>
+      {!!data.request_phases?.length && (
+        <div className='mb-3 space-y-2'>
+          <p className='text-sm font-medium'>请求阶段时间线</p>
+          {data.request_phases.map((phase, index) => (
+            <div key={index} className='text-xs'>
+              <p>{phaseLabels[phase.name] ?? phase.name}</p>
+              <p className='text-muted-foreground font-mono'>
+                {phase.at} · 自进入 {phase.elapsed_ms} 毫秒 · 距上一阶段{' '}
+                {phase.since_previous_ms} 毫秒
+              </p>
+            </div>
+          ))}
+          {data.request_phases_truncated && (
+            <p className='text-muted-foreground text-xs'>
+              阶段记录已达到 64 条上限。
+            </p>
+          )}
+        </div>
+      )}
       {flags.map(([label, value]) =>
         value !== undefined ? (
           <DetailRow key={label} label={label} value={value ? '是' : '否'} />
@@ -168,7 +262,7 @@ export function RequestDiagnosticsSection(props: {
       {!!data.recent_upstream_events?.length && (
         <div className='my-3 space-y-1'>
           <p className='text-muted-foreground text-xs'>
-            最近上游事件（最多 8 条，不含正文；UTC）
+            最近上游事件（最多 8 条，不含正文；北京时间）
           </p>
           {data.recent_upstream_events.map((event, index) => (
             <p key={index} className='font-mono text-xs break-all'>

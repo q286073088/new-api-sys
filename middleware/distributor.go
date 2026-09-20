@@ -33,6 +33,7 @@ type ModelRequest struct {
 
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
+		common.MarkRequestPhase(c.Request.Context(), "distribution_started")
 		var channel *model.Channel
 		constraints := service.GetChannelConstraints(c)
 		constraints.AddFilter(taskdto.ChannelFilter{
@@ -41,6 +42,7 @@ func Distribute() func(c *gin.Context) {
 		})
 		service.AppendTaskPluginIdentityFilter(c, c.GetString("expected_task_plugin_key"))
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
+		common.MarkRequestPhase(c.Request.Context(), "model_request_parsed")
 		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
@@ -194,6 +196,7 @@ func Distribute() func(c *gin.Context) {
 				return
 			}
 		}
+		common.MarkRequestPhase(c.Request.Context(), "channel_selected")
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		c.Next()

@@ -3,9 +3,11 @@ package common
 import (
 	"context"
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,4 +83,48 @@ func TestConnectionDiagnosticsCancellationOrigin(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRequestTimelineIncludesBodyReadAndBeijingTime(t *testing.T) {
+	ctx := WithRequestTimeline(context.Background())
+	RecordDownstreamKeepalive(ctx)
+	RecordDownstreamKeepalive(ctx)
+	keepalive := RequestKeepaliveSnapshot(ctx)
+	assert.Equal(t, 2, keepalive.WrittenCount)
+	assert.NotEmpty(t, keepalive.FirstWrittenAt)
+	assert.NotEmpty(t, keepalive.LastWrittenAt)
+	MarkRequestPhase(ctx, "authentication_started")
+	MarkRequestPhase(ctx, "authentication_finished")
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"test"}`)).WithContext(ctx)
+	_, err := GetRequestBody(c)
+	require.NoError(t, err)
+	defer CleanupBodyStorage(c)
+	_, err = GetRequestBody(c)
+	require.NoError(t, err)
+	started, phases, truncated := RequestTimelineSnapshot(ctx)
+	require.False(t, started.IsZero())
+	require.False(t, truncated)
+	require.Len(t, phases, 5, "reusing the body must not create a second read interval")
+	assert.Equal(t, "request_body_read_started", phases[3].Name)
+	assert.Equal(t, "request_body_read_finished", phases[4].Name)
+	for i, phase := range phases {
+		assert.NotContains(t, phase.At, "T")
+		assert.NotContains(t, phase.At, "Z")
+		if i > 0 {
+			assert.GreaterOrEqual(t, phase.ElapsedMS, phases[i-1].ElapsedMS)
+		}
+	}
+	phases[0].Name = "modified"
+	_, snapshot, _ := RequestTimelineSnapshot(ctx)
+	assert.Equal(t, "request_received", snapshot[0].Name)
+	for range 70 {
+		MarkRequestPhase(ctx, "retry")
+	}
+	_, snapshot, truncated = RequestTimelineSnapshot(ctx)
+	assert.Len(t, snapshot, 64)
+	assert.True(t, truncated)
+	at, err := time.Parse(time.RFC3339Nano, "2026-09-20T02:04:50.502152115Z")
+	require.NoError(t, err)
+	assert.Equal(t, "2026-09-20 10:04:50.502", DiagnosticTime(at))
 }

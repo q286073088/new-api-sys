@@ -42,7 +42,7 @@ func TestClientDisconnectLogIncludesAdminConnectionDiagnostics(t *testing.T) {
 	t.Cleanup(cancelClient)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions?key=client-secret", strings.NewReader("private prompt")).WithContext(clientContext)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions?key=client-secret", strings.NewReader("private prompt")).WithContext(common.WithRequestTimeline(clientContext))
 	c.Request.Header.Set("User-Agent", "ExampleClient/1.0")
 	c.Request.Header.Set("Authorization", "Bearer client-secret")
 	req, err := http.NewRequest(http.MethodPost, upstream.URL+"/?key=upstream-secret", strings.NewReader("private prompt"))
@@ -77,6 +77,11 @@ func TestClientDisconnectLogIncludesAdminConnectionDiagnostics(t *testing.T) {
 	assert.Equal(t, float64(http.StatusOK), diagnostics["upstream_status"])
 	assert.Equal(t, "upstream-trace-123", diagnostics["upstream_request_id"])
 	assert.Equal(t, "gateway-trace-456", diagnostics["gateway_request_id"])
+	assert.Equal(t, float64(3), diagnostics["diagnostics_version"])
+	assert.Equal(t, "Asia/Shanghai (UTC+08:00)", diagnostics["timezone"])
+	assert.NotEmpty(t, diagnostics["request_phases"])
+	assert.NotNil(t, diagnostics["gateway_elapsed_ms"])
+	assert.NotContains(t, diagnostics["recorded_at"], "Z")
 	assert.Equal(t, "/v1/chat/completions", diagnostics["request_path"])
 	assert.Equal(t, false, diagnostics["usage_event_seen"])
 	assert.Equal(t, false, diagnostics["terminal_event_seen"])
@@ -179,13 +184,15 @@ func TestStreamDiagnosticMetadataIsBoundedAndExcludesContent(t *testing.T) {
 	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	body := strings.Repeat(`data: {"type":"response.output_text.delta","delta":"private answer"}`+"\n\n", 12)
+	body := ": PING\n\n" + strings.Repeat(`data: {"type":"response.output_text.delta","delta":"private answer"}`+"\n\n", 12)
 	body += `data: {"type":"response.completed","response":{"usage":{"input_tokens":10,"output_tokens":2}}}` + "\n\n"
 	body += "data: [DONE]\n\n"
 	info := &relaycommon.RelayInfo{StartTime: time.Now(), DisablePing: true, ChannelMeta: &relaycommon.ChannelMeta{}}
 	helper.StreamScannerHandler(c, &http.Response{Body: io.NopCloser(strings.NewReader(body)), StatusCode: 200}, info, func(string, *helper.StreamResult) {})
 	require.NotNil(t, info.StreamStatus.Diagnostics)
 	assert.Len(t, info.StreamStatus.Diagnostics.RecentEvents, 8)
+	assert.Equal(t, 1, info.StreamStatus.Diagnostics.CommentLines)
+	assert.Positive(t, info.StreamStatus.Diagnostics.BlankLines)
 	assert.True(t, info.StreamStatus.Diagnostics.UsageEventSeen)
 	assert.True(t, info.StreamStatus.Diagnostics.TerminalEventSeen)
 	// Even a normally terminated stream must retain evidence when billing validation fails.

@@ -11,10 +11,12 @@ import (
 )
 
 func SetRelayRouter(router *gin.Engine) {
+	router.Use(middleware.RequestPhase("relay_middleware_started"))
 	router.Use(middleware.CORS())
 	router.Use(middleware.DecompressRequestMiddleware())
 	router.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	router.Use(middleware.StatsMiddleware())
+	router.Use(middleware.RequestPhase("relay_middleware_finished"))
 	// https://platform.openai.com/docs/api-reference/introduction
 	modelsRouter := router.Group("/v1/models")
 	modelsRouter.Use(middleware.RouteTag("relay"))
@@ -68,9 +70,9 @@ func SetRelayRouter(router *gin.Engine) {
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))
-	relayV1Router.Use(middleware.SystemPerformanceCheck())
-	relayV1Router.Use(middleware.TokenAuth())
-	relayV1Router.Use(middleware.ModelRequestRateLimit())
+	relayV1Router.Use(middleware.RequestPhase("performance_check_started"), middleware.SystemPerformanceCheck(), middleware.RequestPhase("performance_check_finished"))
+	relayV1Router.Use(middleware.RequestPhase("authentication_started"), middleware.TokenAuth(), middleware.RequestPhase("authentication_finished"))
+	relayV1Router.Use(middleware.RequestPhase("rate_limit_started"), middleware.ModelRequestRateLimit(), middleware.RequestPhase("rate_limit_finished"))
 	{
 		// WebSocket 路由（统一到 Relay）
 		wsRouter := relayV1Router.Group("")

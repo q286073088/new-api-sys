@@ -94,6 +94,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	var firstDataAt, lastReadAt time.Time
 	var upstreamReadError error
 	var recentEvents []relaycommon.StreamEventDiagnostic
+	var scannedLines, commentLines, blankLines, otherLines int
 	var usageEventSeen, terminalEventSeen, scannerErrorAfterCleanup bool
 	var upstreamBodyClosedAt, scannerErrorAt time.Time
 	receivedBeforeStream := info.ReceivedResponseCount
@@ -268,6 +269,15 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			ticker.Reset(streamingTimeout)
 			lastReadAt = time.Now()
 			data := scanner.Text()
+			scannedLines++
+			switch {
+			case strings.TrimSpace(data) == "":
+				blankLines++
+			case strings.HasPrefix(data, ":"):
+				commentLines++
+			case !strings.HasPrefix(data, "data:") && !strings.HasPrefix(data, "[DONE]"):
+				otherLines++
+			}
 			logger.LogDebug(c, "stream scanner data: %s", data)
 
 			if len(data) < 6 {
@@ -369,6 +379,10 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	cleanup()
 	info.StreamStatus.Diagnostics = &relaycommon.StreamDiagnostics{
 		RecentEvents:             recentEvents,
+		ScannedLines:             scannedLines,
+		CommentLines:             commentLines,
+		BlankLines:               blankLines,
+		OtherLines:               otherLines,
 		UsageEventSeen:           usageEventSeen,
 		TerminalEventSeen:        terminalEventSeen,
 		UpstreamBodyClosedAt:     upstreamBodyClosedAt,

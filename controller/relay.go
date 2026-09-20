@@ -129,7 +129,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
+	common.MarkRequestPhase(c.Request.Context(), "request_validation_started")
 	request, err := helper.GetAndValidateRequest(c, relayFormat)
+	common.MarkRequestPhase(c.Request.Context(), "request_validation_finished")
 	if err != nil {
 		// Map "request body too large" to 413 so clients can handle it correctly
 		if common.IsRequestBodyTooLargeError(err) || errors.Is(err, common.ErrRequestBodyTooLarge) {

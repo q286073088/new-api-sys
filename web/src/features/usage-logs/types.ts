@@ -114,6 +114,28 @@ export interface ToolSurchargeItem {
 }
 
 export interface RequestDiagnostics {
+  downstream_keepalive?: {
+    written_count: number
+    first_written_at: string
+    last_written_at: string
+  }
+
+  timezone?: string
+  gateway_received_at?: string
+  gateway_elapsed_ms?: number
+  before_relay_elapsed_ms?: number
+  request_phases?: {
+    name: string
+    at: string
+    elapsed_ms: number
+    since_previous_ms: number
+  }[]
+  request_phases_truncated?: boolean
+  upstream_scanned_lines?: number
+  upstream_comment_lines?: number
+  upstream_blank_lines?: number
+  upstream_other_lines?: number
+
   diagnostics_version?: number
   gateway_request_id?: string
   gateway_version?: string

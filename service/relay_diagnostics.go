@@ -27,11 +27,11 @@ func appendRelayRequestDiagnostics(ctx *gin.Context, info *relaycommon.RelayInfo
 	}
 
 	diagnostics := map[string]any{
-		"diagnostics_version":    2,
+		"diagnostics_version":    3,
 		"gateway_request_id":     info.RequestId,
 		"gateway_version":        common.Version,
 		"request_path":           ctx.Request.URL.Path,
-		"recorded_at":            time.Now().UTC().Format(time.RFC3339Nano),
+		"recorded_at":            common.DiagnosticTime(time.Now()),
 		"missing_billable_usage": info.MissingBillableUsage,
 		"node_name":              common.NodeName,
 		"client_protocol":        ctx.Request.Proto,
@@ -43,7 +43,7 @@ func appendRelayRequestDiagnostics(ctx *gin.Context, info *relaycommon.RelayInfo
 		diagnostics["cloudflare_ray"] = relayDiagnosticText(info, ray)
 	}
 	if !info.StartTime.IsZero() {
-		diagnostics["request_started_at"] = info.StartTime.UTC().Format(time.RFC3339Nano)
+		diagnostics["request_started_at"] = common.DiagnosticTime(info.StartTime)
 		diagnostics["request_elapsed_ms"] = max(0, time.Since(info.StartTime).Milliseconds())
 	}
 	if ctx.Request.ContentLength >= 0 {
@@ -63,25 +63,29 @@ func appendRelayRequestDiagnostics(ctx *gin.Context, info *relaycommon.RelayInfo
 			diagnostics["client_context_cause"] = relayDiagnosticText(info, cause.Error())
 		}
 	}
+	diagnosticStart := info.StartTime
+	if received, _, _ := common.RequestTimelineSnapshot(ctx.Request.Context()); !received.IsZero() {
+		diagnosticStart = received
+	}
 	if connection, ok := common.GetConnectionDiagnostics(ctx.Request.Context()); ok {
 		for operation, failure := range map[string]common.ConnectionIOFailure{"read": connection.ReadFailure, "write": connection.WriteFailure} {
-			if failure.At.IsZero() || failure.At.Before(info.StartTime) {
+			if failure.At.IsZero() || failure.At.Before(diagnosticStart) {
 				continue
 			}
 			prefix := "downstream_" + operation + "_"
 			diagnostics[prefix+"error"] = relayDiagnosticText(info, failure.Error)
 			diagnostics[prefix+"error_kind"] = failure.Kind
-			diagnostics[prefix+"error_at"] = failure.At.UTC().Format(time.RFC3339Nano)
+			diagnostics[prefix+"error_at"] = common.DiagnosticTime(failure.At)
 			if !failure.Deadline.IsZero() {
-				diagnostics[prefix+"deadline"] = failure.Deadline.UTC().Format(time.RFC3339Nano)
+				diagnostics[prefix+"deadline"] = common.DiagnosticTime(failure.Deadline)
 			}
 		}
-		if !connection.ClosedAt.IsZero() && !connection.ClosedAt.Before(info.StartTime) {
-			diagnostics["gateway_connection_closed_at"] = connection.ClosedAt.UTC().Format(time.RFC3339Nano)
+		if !connection.ClosedAt.IsZero() && !connection.ClosedAt.Before(diagnosticStart) {
+			diagnostics["gateway_connection_closed_at"] = common.DiagnosticTime(connection.ClosedAt)
 		}
 	}
 	if deadline, ok := ctx.Request.Context().Deadline(); ok {
-		diagnostics["client_deadline"] = deadline.UTC().Format(time.RFC3339Nano)
+		diagnostics["client_deadline"] = common.DiagnosticTime(deadline)
 	}
 	if upstream != nil {
 		diagnostics["upstream_host"] = upstream.Host
@@ -116,16 +120,24 @@ func appendRelayRequestDiagnostics(ctx *gin.Context, info *relaycommon.RelayInfo
 	}
 	if ss != nil && ss.Diagnostics != nil {
 		stream := ss.Diagnostics
-		diagnostics["stream_started_at"] = stream.StartedAt.UTC().Format(time.RFC3339Nano)
-		diagnostics["stream_ended_at"] = stream.EndedAt.UTC().Format(time.RFC3339Nano)
-		diagnostics["recent_upstream_events"] = stream.RecentEvents
+		diagnostics["stream_started_at"] = common.DiagnosticTime(stream.StartedAt)
+		diagnostics["stream_ended_at"] = common.DiagnosticTime(stream.EndedAt)
+		diagnostics["upstream_scanned_lines"] = stream.ScannedLines
+		diagnostics["upstream_comment_lines"] = stream.CommentLines
+		diagnostics["upstream_blank_lines"] = stream.BlankLines
+		diagnostics["upstream_other_lines"] = stream.OtherLines
+		events := make([]map[string]any, 0, len(stream.RecentEvents))
+		for _, event := range stream.RecentEvents {
+			events = append(events, map[string]any{"at": common.DiagnosticTime(event.At), "type": event.Type, "bytes": event.Bytes})
+		}
+		diagnostics["recent_upstream_events"] = events
 		diagnostics["usage_event_seen"] = stream.UsageEventSeen
 		diagnostics["terminal_event_seen"] = stream.TerminalEventSeen
 		if !stream.UpstreamBodyClosedAt.IsZero() {
-			diagnostics["upstream_body_closed_at"] = stream.UpstreamBodyClosedAt.UTC().Format(time.RFC3339Nano)
+			diagnostics["upstream_body_closed_at"] = common.DiagnosticTime(stream.UpstreamBodyClosedAt)
 		}
 		if !stream.ScannerErrorAt.IsZero() {
-			diagnostics["scanner_error_at"] = stream.ScannerErrorAt.UTC().Format(time.RFC3339Nano)
+			diagnostics["scanner_error_at"] = common.DiagnosticTime(stream.ScannerErrorAt)
 			diagnostics["scanner_error_after_cleanup"] = stream.ScannerErrorAfterCleanup
 		}
 		diagnostics["stream_elapsed_ms"] = max(0, stream.EndedAt.Sub(stream.StartedAt).Milliseconds())
@@ -142,12 +154,22 @@ func appendRelayRequestDiagnostics(ctx *gin.Context, info *relaycommon.RelayInfo
 			diagnostics["first_event_elapsed_ms"] = max(0, stream.FirstDataAt.Sub(stream.StartedAt).Milliseconds())
 		}
 		if !stream.LastReadAt.IsZero() {
-			diagnostics["last_upstream_data_at"] = stream.LastReadAt.UTC().Format(time.RFC3339Nano)
+			diagnostics["last_upstream_data_at"] = common.DiagnosticTime(stream.LastReadAt)
 			diagnostics["last_upstream_activity_ms"] = max(0, stream.EndedAt.Sub(stream.LastReadAt).Milliseconds())
 		}
 		if stream.UpstreamReadError != nil {
 			diagnostics["upstream_read_error"] = relayDiagnosticText(info, stream.UpstreamReadError.Error())
 		}
+	}
+
+	diagnostics["timezone"] = "Asia/Shanghai (UTC+08:00)"
+	if started, phases, truncated := common.RequestTimelineSnapshot(ctx.Request.Context()); !started.IsZero() {
+		diagnostics["gateway_received_at"] = common.DiagnosticTime(started)
+		diagnostics["gateway_elapsed_ms"] = max(0, time.Since(started).Milliseconds())
+		diagnostics["before_relay_elapsed_ms"] = max(0, info.StartTime.Sub(started).Milliseconds())
+		diagnostics["request_phases"] = phases
+		diagnostics["request_phases_truncated"] = truncated
+		diagnostics["downstream_keepalive"] = common.RequestKeepaliveSnapshot(ctx.Request.Context())
 	}
 	other.SetAdmin("request_diagnostics", diagnostics)
 }

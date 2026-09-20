@@ -36,6 +36,11 @@ type StreamEventDiagnostic struct {
 }
 
 type StreamDiagnostics struct {
+	ScannedLines int
+	CommentLines int
+	BlankLines   int
+	OtherLines   int
+
 	RecentEvents             []StreamEventDiagnostic
 	UsageEventSeen           bool
 	TerminalEventSeen        bool

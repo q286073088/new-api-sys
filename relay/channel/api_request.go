@@ -489,6 +489,7 @@ func keepUpstreamRedirectResponse(_ *http.Request, _ []*http.Request) error {
 }
 
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
+	common2.MarkRequestPhase(c.Request.Context(), "upstream_preparation_started")
 	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
@@ -536,7 +537,9 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		Timeout:   relayClient.Timeout,
 	}
 	info.UpstreamDiagnostics = diagnostics
+	common2.MarkRequestPhase(c.Request.Context(), "upstream_request_started")
 	resp, err := relayClient.Do(req)
+	common2.MarkRequestPhase(c.Request.Context(), "upstream_headers_finished")
 	diagnostics.CompletedAt = time.Now()
 	diagnostics.Err = err
 	if resp != nil {
