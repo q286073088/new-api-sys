@@ -84,6 +84,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	imageCommitted := false
 	var terminalResponse dto.ResponsesStreamResponse
 	var terminalData string
+	var streamErr *types.NewAPIError
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -120,6 +121,22 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				imageCommitted = true
 			}
 		case "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+			var oaiErr *types.OpenAIError
+			if streamResponse.Response != nil {
+				oaiErr = streamResponse.Response.GetOpenAIError()
+			}
+			if oaiErr == nil {
+				oaiErr = dto.GetOpenAIError(streamResponse.Error)
+			}
+			if oaiErr == nil && strings.TrimSpace(streamResponse.Message) != "" {
+				oaiErr = &types.OpenAIError{Type: "upstream_error", Message: streamResponse.Message, Code: streamResponse.Code}
+			}
+			if oaiErr != nil && strings.TrimSpace(oaiErr.Message) != "" {
+				streamErr = types.WithOpenAIError(*oaiErr, http.StatusInternalServerError)
+				sr.Stop(streamErr)
+				return
+			}
+
 			if streamResponse.Response != nil && streamResponse.Response.Usage != nil {
 				usage = dto.MergeUsageNonZero(usage, relayconvert.NormalizeResponsesUsage(streamResponse.Response.Usage))
 			}
@@ -156,6 +173,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sendResponsesStreamData(c, streamResponse, data)
 		}
 	})
+
+	if streamErr != nil {
+		return nil, streamErr
+	}
 
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量
