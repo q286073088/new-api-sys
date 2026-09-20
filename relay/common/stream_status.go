@@ -36,10 +36,15 @@ type StreamEventDiagnostic struct {
 }
 
 type StreamDiagnostics struct {
-	ScannedLines int
-	CommentLines int
-	BlankLines   int
-	OtherLines   int
+	ClientGoneAt           time.Time
+	DrainStartedAt         time.Time
+	DrainEndedAt           time.Time
+	DrainTimedOut          bool
+	DrainedAfterClientGone bool
+	ScannedLines           int
+	CommentLines           int
+	BlankLines             int
+	OtherLines             int
 
 	RecentEvents             []StreamEventDiagnostic
 	UsageEventSeen           bool

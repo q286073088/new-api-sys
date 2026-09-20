@@ -27,12 +27,15 @@ const (
 	InitialScannerBufferSize    = 64 << 10  // 64KB (64*1024)
 	DefaultMaxScannerBufferSize = 128 << 20 // 64MB (64*1024*1024) default SSE buffer size
 	DefaultPingInterval         = 10 * time.Second
+	// clientGoneDrainTimeout is defined below so tests can use a short drain window.
 	// streamWriteTimeout bounds a single blocked write to a slow client so the
 	// unconditional wg.Wait() in cleanup can always finish. Without it, a slow
 	// but connected client (full TCP buffer, no server WriteTimeout) could hang
 	// the handler forever.
 	streamWriteTimeout = 30 * time.Second
 )
+
+var clientGoneDrainTimeout = 120 * time.Second
 
 func getScannerBufferSize() int {
 	if constant.StreamScannerMaxBufferMB > 0 {
@@ -97,6 +100,8 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	var scannedLines, commentLines, blankLines, otherLines int
 	var usageEventSeen, terminalEventSeen, scannerErrorAfterCleanup bool
 	var upstreamBodyClosedAt, scannerErrorAt time.Time
+	var clientGoneAt, drainStartedAt, drainEndedAt time.Time
+	var drainTimedOut, drainedAfterClientGone bool
 	receivedBeforeStream := info.ReceivedResponseCount
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -108,6 +113,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		scanner     = NewStreamScanner(resp.Body)
 		ticker      = time.NewTicker(streamingTimeout)
 		pingTicker  *time.Ticker
+		drainTimer  *time.Timer
 		writeMutex  sync.Mutex     // Mutex to protect concurrent writes
 		wg          sync.WaitGroup // 用于等待所有 goroutine 退出
 		cleanupOnce sync.Once
@@ -149,6 +155,9 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			ticker.Stop()
 			if pingTicker != nil {
 				pingTicker.Stop()
+			}
+			if drainTimer != nil {
+				drainTimer.Stop()
 			}
 
 			wg.Wait()
@@ -370,14 +379,34 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	case <-stopChan:
 		// EndReason already set by the goroutine that triggered stopChan
 	case <-c.Request.Context().Done():
-		// 客户端断开：立即 cleanup 关闭上游 resp.Body，解除 scanner 阻塞并让上游停止生成，
-		// 避免为已放弃的请求继续消费上游 token。
+		// The peer is gone, but the upstream may already have generated billable
+		// work. Keep reading for a bounded period so a final usage event can settle.
+		clientGoneAt = time.Now()
+		drainStartedAt = clientGoneAt
+		drainTimer = time.NewTimer(clientGoneDrainTimeout)
 		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
+		select {
+		case <-stopChan:
+		case <-drainTimer.C:
+			drainTimedOut = true
+			stop()
+			if resp.Body != nil {
+				upstreamBodyClosedAt = time.Now()
+				_ = resp.Body.Close()
+			}
+		}
+		drainEndedAt = time.Now()
+		drainedAfterClientGone = true
 	}
 
 	streamEndedAt := time.Now()
 	cleanup()
 	info.StreamStatus.Diagnostics = &relaycommon.StreamDiagnostics{
+		ClientGoneAt:             clientGoneAt,
+		DrainStartedAt:           drainStartedAt,
+		DrainEndedAt:             drainEndedAt,
+		DrainTimedOut:            drainTimedOut,
+		DrainedAfterClientGone:   drainedAfterClientGone,
 		RecentEvents:             recentEvents,
 		ScannedLines:             scannedLines,
 		CommentLines:             commentLines,

@@ -120,6 +120,17 @@ func appendRelayRequestDiagnostics(ctx *gin.Context, info *relaycommon.RelayInfo
 	}
 	if ss != nil && ss.Diagnostics != nil {
 		stream := ss.Diagnostics
+		if !stream.ClientGoneAt.IsZero() {
+			diagnostics["client_gone_at"] = common.DiagnosticTime(stream.ClientGoneAt)
+		}
+		if !stream.DrainStartedAt.IsZero() {
+			diagnostics["upstream_drain_started_at"] = common.DiagnosticTime(stream.DrainStartedAt)
+		}
+		if !stream.DrainEndedAt.IsZero() {
+			diagnostics["upstream_drain_ended_at"] = common.DiagnosticTime(stream.DrainEndedAt)
+		}
+		diagnostics["upstream_drain_timed_out"] = stream.DrainTimedOut
+		diagnostics["drained_after_client_gone"] = stream.DrainedAfterClientGone
 		diagnostics["stream_started_at"] = common.DiagnosticTime(stream.StartedAt)
 		diagnostics["stream_ended_at"] = common.DiagnosticTime(stream.EndedAt)
 		diagnostics["upstream_scanned_lines"] = stream.ScannedLines

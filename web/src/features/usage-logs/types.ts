@@ -114,6 +114,11 @@ export interface ToolSurchargeItem {
 }
 
 export interface RequestDiagnostics {
+  client_gone_at?: string
+  upstream_drain_started_at?: string
+  upstream_drain_ended_at?: string
+  upstream_drain_timed_out?: boolean
+  drained_after_client_gone?: boolean
   downstream_keepalive?: {
     written_count: number
     first_written_at: string

@@ -107,6 +107,25 @@ export function RequestDiagnosticsSection(props: {
       data.gateway_request_id || props.log?.request_id,
     ],
     ['诊断版本', data.diagnostics_version],
+    ['客户端断开时间', data.client_gone_at],
+    ['上游排空开始时间', data.upstream_drain_started_at],
+    ['上游排空结束时间', data.upstream_drain_ended_at],
+    [
+      '上游排空超时',
+      data.upstream_drain_timed_out === undefined
+        ? undefined
+        : data.upstream_drain_timed_out
+          ? '是'
+          : '否',
+    ],
+    [
+      '断线后继续读取上游',
+      data.drained_after_client_gone === undefined
+        ? undefined
+        : data.drained_after_client_gone
+          ? '是'
+          : '否',
+    ],
     ['保活成功写出次数', data.downstream_keepalive?.written_count],
     ['首次保活写出时间', data.downstream_keepalive?.first_written_at],
     ['最后保活写出时间', data.downstream_keepalive?.last_written_at],
