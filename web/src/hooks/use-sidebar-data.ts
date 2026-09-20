@@ -41,7 +41,9 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarData } from '@/components/layout/types'
+import { useQualityTests } from '@/features/quality-tests/api'
 import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -51,6 +53,8 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  const quality = useQualityTests(false, !!user)
 
   return {
     navGroups: [
@@ -74,6 +78,15 @@ export function useSidebarData(): SidebarData {
         id: 'general',
         title: t('General'),
         items: [
+          ...(quality.data?.length
+            ? [
+                {
+                  title: t('Model quality tests'),
+                  url: '/quality-tests' as const,
+                  icon: Activity,
+                },
+              ]
+            : []),
           {
             title: t('Overview'),
             url: '/dashboard/overview',

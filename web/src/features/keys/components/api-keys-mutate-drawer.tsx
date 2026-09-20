@@ -51,6 +51,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { NativeSelect } from '@/components/ui/native-select'
 import {
   Sheet,
   SheetClose,
@@ -415,35 +416,95 @@ export function ApiKeysMutateDrawer({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name='group'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Group')}</FormLabel>
-                    <FormControl>
-                      <ApiKeyGroupCombobox
-                        options={groups}
-                        value={field.value}
-                        onValueChange={(group) => {
-                          field.onChange(group)
-                          if (group === 'auto') {
-                            form.setValue('cross_group_retry', true, {
+              <FormItem>
+                <FormLabel htmlFor='api-key-group-mode'>
+                  {t('Group selection')}
+                </FormLabel>
+                <NativeSelect
+                  id='api-key-group-mode'
+                  className='w-full'
+                  value={selectedGroup === 'auto' ? autoGroupsMode : 'single'}
+                  onChange={(event) => {
+                    const mode = event.target.value
+                    if (mode === 'single') {
+                      const nextGroup =
+                        form.getValues('auto_groups')[0] ??
+                        groups.find((item) => item.value !== 'auto')?.value ??
+                        ''
+                      form.setValue('group', nextGroup, { shouldDirty: true })
+                      form.setValue('cross_group_retry', false, {
+                        shouldDirty: true,
+                      })
+                      return
+                    }
+                    form.setValue('group', 'auto', { shouldDirty: true })
+                    form.setValue(
+                      'auto_groups_mode',
+                      mode === 'custom' ? 'custom' : 'inherit',
+                      { shouldDirty: true }
+                    )
+                    if (selectedGroup !== 'auto') {
+                      form.setValue('cross_group_retry', true, {
+                        shouldDirty: true,
+                      })
+                      if (
+                        mode === 'custom' &&
+                        selectedGroup &&
+                        form.getValues('auto_groups').length === 0
+                      ) {
+                        form.setValue('auto_groups', [selectedGroup], {
+                          shouldDirty: true,
+                        })
+                      }
+                    }
+                  }}
+                >
+                  <option value='single'>{t('Single group')}</option>
+                  <option value='custom'>{t('Custom multiple groups')}</option>
+                  <option value='inherit'>
+                    {t('Follow system Auto groups')}
+                  </option>
+                </NativeSelect>
+                <FormDescription>
+                  {t(
+                    'One API key can access models from all selected groups. Groups without the requested model are skipped; existing retry rules remain unchanged.'
+                  )}
+                </FormDescription>
+              </FormItem>
+
+              {selectedGroup !== 'auto' && (
+                <FormField
+                  control={form.control}
+                  name='group'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Group')}</FormLabel>
+                      <FormControl>
+                        <ApiKeyGroupCombobox
+                          options={groups.filter(
+                            (item) => item.value !== 'auto'
+                          )}
+                          value={field.value}
+                          onValueChange={(group) => {
+                            field.onChange(group)
+                            if (group === 'auto') {
+                              form.setValue('cross_group_retry', true, {
+                                shouldDirty: true,
+                              })
+                              return
+                            }
+                            form.setValue('cross_group_retry', false, {
                               shouldDirty: true,
                             })
-                            return
-                          }
-                          form.setValue('cross_group_retry', false, {
-                            shouldDirty: true,
-                          })
-                        }}
-                        placeholder={t('Select a group')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                          }}
+                          placeholder={t('Select a group')}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               {selectedGroup === 'auto' && (
                 <FormField

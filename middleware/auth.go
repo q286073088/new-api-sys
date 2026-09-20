@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -467,13 +468,28 @@ func TokenAuth() func(c *gin.Context) {
 
 		userGroup := userCache.Group
 		tokenGroup := token.Group
-		if tokenGroup != "" {
-			// check common.UserUsableGroups[userGroup]
+		qualityProbe, isQualityProbe := common.GetQualityRequest(c.Request.Context())
+		if isQualityProbe {
+			// Quality tests are internal requests made with an administrator token.
+			// Resolve the requested fixed group before the normal token-group branch;
+			// an Auto token may legally probe one of its ordered groups.
+			if !model.IsAdmin(token.UserId) || qualityProbe.Group == "" ||
+				!service.GroupInUserUsableGroups(userCache.Group, qualityProbe.Group) ||
+				!ratio_setting.ContainsGroupRatio(qualityProbe.Group) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, "Quality test group is not authorized")
+				return
+			}
+			allowedGroups, groupErr := service.QualityTokenGroups(token, userCache.Group)
+			if groupErr != nil || !slices.Contains(allowedGroups, qualityProbe.Group) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, "Quality test group is not authorized")
+				return
+			}
+			userGroup = qualityProbe.Group
+		} else if tokenGroup != "" {
 			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
 				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
 				return
 			}
-			// check group in common.GroupRatio
 			if !ratio_setting.ContainsGroupRatio(tokenGroup) {
 				if tokenGroup != "auto" {
 					abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", tokenGroup))
@@ -487,6 +503,23 @@ func TokenAuth() func(c *gin.Context) {
 		err = SetupContextForToken(c, token, parts...)
 		if err != nil {
 			return
+		}
+		if probe, ok := common.GetQualityRequest(c.Request.Context()); ok {
+			allowed := probe.Group == userGroup && userGroup != "auto"
+			if token.Group == "auto" {
+				for _, group := range service.GetRequestAutoGroups(c, userCache.Group) {
+					if group == probe.Group {
+						allowed = true
+						break
+					}
+				}
+			}
+			if !allowed || !model.IsAdmin(token.UserId) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, "Quality test group is not authorized")
+				return
+			}
+			common.SetContextKey(c, constant.ContextKeyUsingGroup, probe.Group)
+			common.SetContextKey(c, constant.ContextKeyTokenGroup, probe.Group)
 		}
 		c.Next()
 	}

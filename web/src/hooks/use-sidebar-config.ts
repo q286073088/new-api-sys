@@ -45,6 +45,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
   console: {
     enabled: true,
     detail: true,
+    quality_tests: true,
     token: true,
     log: true,
     audit: true,
@@ -100,6 +101,7 @@ const mergeWithDefaultSidebarModules = (
  * Mapping from URL to configuration keys
  */
 const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
+  '/quality-tests': { section: 'console', module: 'quality_tests' },
   '/playground': { section: 'chat', module: 'playground' },
   '/dashboard': { section: 'console', module: 'detail' },
   '/dashboard/overview': { section: 'console', module: 'detail' },
@@ -317,7 +319,10 @@ export function useSidebarConfig(navGroups: NavGroup[]): NavGroup[] {
           ...group,
           items: group.items.filter((item) => {
             if ('url' in item) {
-              if (status?.referral_enabled === false && item.url === '/referrals') {
+              if (
+                status?.referral_enabled === false &&
+                item.url === '/referrals'
+              ) {
                 return false
               }
               if (

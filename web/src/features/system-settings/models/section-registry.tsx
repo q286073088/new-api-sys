@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { QualityTestSettings } from '@/features/quality-tests'
+
 import { ChannelAffinitySection } from '../general/channel-affinity'
 import { IoNetDeploymentSettingsSection } from '../integrations/ionet-deployment-settings-section'
 import type { ModelSettings } from '../types'
@@ -37,6 +39,11 @@ function formatJsonForEditor(value: string, fallback: string) {
 }
 
 const MODELS_SECTIONS = [
+  {
+    id: 'quality-tests',
+    titleKey: 'Model quality tests',
+    build: () => <QualityTestSettings />,
+  },
   {
     id: 'global',
     titleKey: 'Global Model Configuration',
@@ -92,9 +99,12 @@ const MODELS_SECTIONS = [
             settings['monitor_setting.channel_test_prompt'],
           'monitor_setting.channel_test_max_tokens':
             settings['monitor_setting.channel_test_max_tokens'],
-          'monitor_setting.channel_test_models': settings['monitor_setting.channel_test_models'],
-          'perf_metrics_setting.exclude_errors_enabled': settings['perf_metrics_setting.exclude_errors_enabled'],
-          'perf_metrics_setting.excluded_status_codes': settings['perf_metrics_setting.excluded_status_codes'],
+          'monitor_setting.channel_test_models':
+            settings['monitor_setting.channel_test_models'],
+          'perf_metrics_setting.exclude_errors_enabled':
+            settings['perf_metrics_setting.exclude_errors_enabled'],
+          'perf_metrics_setting.excluded_status_codes':
+            settings['perf_metrics_setting.excluded_status_codes'],
         }}
       />
     ),

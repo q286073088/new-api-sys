@@ -158,6 +158,10 @@ func UpdateOption(c *gin.Context) {
 		})
 		return
 	}
+	if option.Key == model.QualityJudgeOption {
+		qualityError(c, http.StatusBadRequest, "Use the validated quality test judge configuration endpoint")
+		return
+	}
 	switch option.Value.(type) {
 	case bool:
 		option.Value = common.Interface2String(option.Value.(bool))

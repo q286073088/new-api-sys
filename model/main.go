@@ -337,6 +337,8 @@ func migrateDB() error {
 	err := DB.AutoMigrate(
 		&Channel{},
 		&Token{},
+		&QualityTest{},
+		&QualityResult{},
 		&User{},
 		&AnnouncementView{},
 		&EmailNotification{},

@@ -209,8 +209,10 @@ describe('API keys mutate drawer Auto group integration', () => {
     installApiFixtures(createdPayloads)
     await renderCreateDrawer()
 
-    const groupTrigger = getControlByLabel('Group')
-    expect(groupTrigger.textContent?.includes('auto')).toBe(true)
+    const groupMode = document.getElementById(
+      'api-key-group-mode'
+    ) as HTMLSelectElement
+    expect(groupMode.value).toBe('inherit')
     expect(
       document.body.textContent?.includes(
         'Using the complete global Auto order (2 groups)'
@@ -259,10 +261,12 @@ describe('API keys mutate drawer Auto group integration', () => {
     )
     expect(findButton('Restore global Auto', true).disabled).toBe(false)
 
-    const groupTrigger = getControlByLabel('Group')
-    selectComboboxOption(groupTrigger, 'Standard access')
+    const groupMode = document.getElementById(
+      'api-key-group-mode'
+    ) as HTMLSelectElement
+    fireEvent.change(groupMode, { target: { value: 'single' } })
     expect(document.querySelector('button[aria-label="Remove vip"]')).toBe(null)
-    selectComboboxOption(groupTrigger, 'Automatic routing')
+    fireEvent.change(groupMode, { target: { value: 'custom' } })
 
     expect(
       document.querySelector('button[aria-label="Remove vip"]')

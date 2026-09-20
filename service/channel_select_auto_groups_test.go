@@ -127,3 +127,26 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	assert.Equal(t, "default", selectedGroup)
 	assert.Equal(t, "default", common.GetContextKeyString(ctx, constant.ContextKeyAutoGroup))
 }
+
+func TestAutoGroupsRouteDisjointModelsWithoutChangingRetryRules(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	createChannelSelectAutoGroupsChannel(t, db, 101, "default", "gpt-5.6-sol")
+	createChannelSelectAutoGroupsChannel(t, db, 102, "vip", "deepseek-v4-flash")
+	model.InitChannelCache()
+	for _, tc := range []struct {
+		name, group string
+		id          int
+	}{{"gpt-5.6-sol", "default", 101}, {"deepseek-v4-flash", "vip", 102}} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+			common.SetContextKey(c, constant.ContextKeyTokenAutoGroups, []string{"default", "vip"})
+			common.SetContextKey(c, constant.ContextKeyTokenCrossGroupRetry, false)
+			channel, group, err := CacheGetRandomSatisfiedChannel(&RetryParam{Ctx: c, ModelName: tc.name, TokenGroup: "auto"})
+			require.NoError(t, err)
+			require.NotNil(t, channel)
+			assert.Equal(t, tc.id, channel.Id)
+			assert.Equal(t, tc.group, group)
+		})
+	}
+}
