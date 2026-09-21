@@ -102,12 +102,12 @@ function QualityTimeline({
   const series =
     slots ??
     Array.from({ length: 48 }, (_, index) => ({
-      start: start + index * 1800,
+      start: start + index * 3600,
       status: '' as const,
       count: 0,
     }))
   return (
-    <div className='flex gap-0.5' aria-label={t('24-hour test timeline')}>
+    <div className='flex gap-0.5' aria-label={t('48-hour test timeline')}>
       {series.map((slot) => (
         <Tooltip key={slot.start}>
           <TooltipTrigger
@@ -326,7 +326,7 @@ function QualityContent({ admin }: { admin: boolean }) {
             <p className='text-muted-foreground mt-2 text-xs'>
               {filters.from || filters.to
                 ? t('Selected time range')
-                : t('Last 24 hours')}
+                : t('Last 48 hours')}
             </p>
           </CardContent>
         </Card>
@@ -551,7 +551,7 @@ function QualityContent({ admin }: { admin: boolean }) {
               )}
 
               <p className='text-muted-foreground text-xs'>
-                {t('24-hour test timeline')} · {t('48 half-hour slots')}
+                {t('48-hour test timeline')} · {t('48 one-hour slots')}
               </p>
               <QualityTimeline
                 slots={slots}
@@ -560,13 +560,13 @@ function QualityContent({ admin }: { admin: boolean }) {
                   filter({
                     test_id: String(task.id),
                     from: slot.start,
-                    to: slot.start + 1800,
+                    to: slot.start + 3600,
                     status: undefined,
                   })
                 }
               />
               <div className='text-muted-foreground flex justify-between text-xs'>
-                <span>{t('24 hours ago')}</span>
+                <span>{t('48 hours ago')}</span>
                 <span>{t('Now')}</span>
               </div>
             </CardContent>

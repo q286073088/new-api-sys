@@ -212,6 +212,10 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
 		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
 		apiRouter.POST("/subscription/epay/return", anonymousRequestBodyLimit, controller.SubscriptionEpayReturn)
+		businessReport := apiRouter.Group("/dashboard/business-report", middleware.AdminAuth())
+		businessReport.GET("", controller.GetBusinessReport)
+		businessReport.GET("/export", controller.ExportBusinessReport)
+
 		qualityAdmin := apiRouter.Group("/quality-tests", middleware.AdminAuth(), controller.QualityAdminContext)
 		qualityAdmin.GET("", controller.ListQualityTests)
 		qualityAdmin.POST("", controller.SaveQualityTest)

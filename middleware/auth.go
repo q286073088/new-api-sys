@@ -486,12 +486,20 @@ func TokenAuth() func(c *gin.Context) {
 			}
 			userGroup = qualityProbe.Group
 		} else if tokenGroup != "" {
-			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
-				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
-				return
-			}
-			if !ratio_setting.ContainsGroupRatio(tokenGroup) {
-				if tokenGroup != "auto" {
+			if tokenGroup == "auto" {
+				// Custom Auto keys are authorized by their persisted groups,
+				// not by the optional pseudo-group entry itself.
+				groups, groupErr := service.QualityTokenGroups(token, userGroup)
+				if groupErr != nil || len(groups) == 0 {
+					abortWithOpenAiMessage(c, http.StatusForbidden, "无权访问 auto 分组")
+					return
+				}
+			} else {
+				if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
+					abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
+					return
+				}
+				if !ratio_setting.ContainsGroupRatio(tokenGroup) {
 					abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", tokenGroup))
 					return
 				}

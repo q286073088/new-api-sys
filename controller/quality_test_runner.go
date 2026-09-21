@@ -29,7 +29,7 @@ func (*qualityTestHandler) Enabled() bool {
 	}
 	return model.DB.Model(&model.QualityResult{}).Where("status = ?", "running").Count(&count).Error == nil && count > 0
 }
-func (*qualityTestHandler) Interval() time.Duration { return 15 * time.Second }
+func (*qualityTestHandler) Interval() time.Duration { return 2 * time.Second }
 func (*qualityTestHandler) NewPayload() any         { return nil }
 
 func (h *qualityTestHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
@@ -63,7 +63,7 @@ func (h *qualityTestHandler) runDue(ctx context.Context, batchTaskID, runnerID s
 	}
 	var tests []model.QualityTest
 	now := time.Now().Unix()
-	if err := model.DB.Where("requested_at > ? OR (enabled = ? AND next_run_at <= ?)", 0, true, now).Order("next_run_at, id").Limit(100).Find(&tests).Error; err != nil {
+	if err := model.DB.Where("requested_at > ? OR (enabled = ? AND (next_run_at = 0 OR next_run_at <= ?))", 0, true, now).Order("next_run_at, id").Limit(100).Find(&tests).Error; err != nil {
 		return err
 	}
 	slots := make(chan struct{}, 2)
@@ -152,6 +152,7 @@ func (h *qualityTestHandler) execute(ctx context.Context, result *model.QualityR
 	if normalizeQualityAnswer(answer) == normalizeQualityAnswer(snapshot.Test.ExpectedAnswer) {
 		result.Status = "passed"
 		result.Verdict = "exact"
+		result.Reason = "The normalized answer exactly matches the reference answer; the judge model was skipped."
 		return
 	}
 	result.Status = "pending"

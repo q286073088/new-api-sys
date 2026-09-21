@@ -46,7 +46,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const [mode, setMode] = useState<QuotaAdjustMode>('add')
   const [amount, setAmount] = useState('')
   const [loading, setLoading] = useState(false)
-  const [gift, setGift] = useState(false)
+  const [gift, setGift] = useState(true)
   const [paidAmount, setPaidAmount] = useState('')
 
   const { meta: currencyMeta } = getCurrencyDisplay()
@@ -99,7 +99,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
         toast.success(t('Quota adjusted successfully'))
         setAmount('')
         setMode('add')
-        setGift(false)
+        setGift(true)
         setPaidAmount('')
         props.onOpenChange(false)
         props.onSuccess()
@@ -116,7 +116,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const handleCancel = () => {
     setAmount('')
     setMode('add')
-    setGift(false)
+    setGift(true)
     setPaidAmount('')
     props.onOpenChange(false)
   }

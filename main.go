@@ -155,7 +155,6 @@ func main() {
 	// schedules and executes them. Master-only execution and the UpdateTask
 	// switch are enforced inside the runner and each handler's Enabled().
 	controller.RegisterScheduledSystemTasks()
-	service.StartSystemTaskRunner()
 
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true
@@ -206,6 +205,8 @@ func main() {
 		IndexPage: indexPage,
 	})
 	controller.RegisterQualityTests(server)
+	// Start scheduled jobs after all handlers, including quality tests, are registered.
+	service.StartSystemTaskRunner()
 	var port = os.Getenv("PORT")
 	if port == "" {
 		port = strconv.Itoa(*common.Port)

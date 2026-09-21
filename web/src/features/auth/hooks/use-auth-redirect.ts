@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useNavigate } from '@tanstack/react-router'
 import i18n from 'i18next'
+import { normalizeInterfaceLanguage } from '@/i18n/languages'
 import { useCallback, useEffect, useRef } from 'react'
 
 import {
@@ -58,8 +59,8 @@ export function useAuthRedirect() {
         return
       }
       applyAuthBundle(bundle)
-      const savedLang = getSavedLanguage(bundle.user)
-      if (savedLang && savedLang !== i18n.language) {
+      const savedLang = normalizeInterfaceLanguage(getSavedLanguage(bundle.user))
+      if (savedLang !== i18n.language) {
         await i18n.changeLanguage(savedLang)
       }
 

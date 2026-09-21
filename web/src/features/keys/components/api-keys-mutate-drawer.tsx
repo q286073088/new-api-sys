@@ -267,7 +267,7 @@ export function ApiKeysMutateDrawer({
   useEffect(() => {
     if (groups.length === 0) return
     const currentGroup = selectedGroup
-    if (currentGroup && !groups.some((g) => g.value === currentGroup)) {
+    if (currentGroup && currentGroup !== 'auto' && !groups.some((g) => g.value === currentGroup)) {
       const fallback =
         groups.find((g) => g.value === 'default')?.value ??
         groups[0]?.value ??
@@ -440,7 +440,7 @@ export function ApiKeysMutateDrawer({
                     form.setValue('group', 'auto', { shouldDirty: true })
                     form.setValue(
                       'auto_groups_mode',
-                      mode === 'custom' ? 'custom' : 'inherit',
+                      'custom',
                       { shouldDirty: true }
                     )
                     if (selectedGroup !== 'auto') {
@@ -461,9 +461,6 @@ export function ApiKeysMutateDrawer({
                 >
                   <option value='single'>{t('Single group')}</option>
                   <option value='custom'>{t('Custom multiple groups')}</option>
-                  <option value='inherit'>
-                    {t('Follow system Auto groups')}
-                  </option>
                 </NativeSelect>
                 <FormDescription>
                   {t(
@@ -521,12 +518,12 @@ export function ApiKeysMutateDrawer({
                       <FormControl>
                         <AutoGroupOrderEditor
                           value={field.value}
-                          mode={autoGroupsMode}
+                          mode='custom'
                           options={groups}
                           globalOptions={globalAutoGroupOptions}
                           maxCount={maxAutoGroups}
                           onChange={(value) => {
-                            form.setValue('auto_groups_mode', value.mode, {
+                            form.setValue('auto_groups_mode', 'custom', {
                               shouldDirty: true,
                               shouldValidate: false,
                             })

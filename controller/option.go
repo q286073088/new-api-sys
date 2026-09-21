@@ -175,7 +175,7 @@ func UpdateOption(c *gin.Context) {
 	switch option.Key {
 	case "CustomerServiceQQ":
 		if len(strings.TrimSpace(option.Value.(string))) > 128 {
-			common.ApiErrorMsg(c, "客服 QQ 号过长")
+			common.ApiErrorMsg(c, "客服账号过长")
 			return
 		}
 	case "CustomerServiceQRCode":

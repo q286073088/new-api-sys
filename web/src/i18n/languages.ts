@@ -32,22 +32,29 @@ export type InterfaceLanguageCode =
 export function normalizeInterfaceLanguage(value?: string | null): string {
   if (!value) return 'en'
 
-  let normalized = value.trim().replaceAll('_', '-').toLowerCase()
+  const normalized = value.trim().replaceAll('_', '-').toLowerCase()
   if (
-    value === 'zh-TW' ||
-    value === 'zh-HK' ||
-    value === 'zh-MO' ||
-    value === 'zhTW'
+    normalized === 'zh-cn' ||
+    normalized === 'zh-hans' ||
+    normalized === 'zh' ||
+    normalized === 'zhcn'
   ) {
-    normalized = 'zhTW'
+    return 'zhCN'
   }
-  if (value === 'zh-CN' || value === 'zh-Hans' || value === 'zhCN') {
-    normalized = 'zhCN'
+  if (
+    normalized === 'zh-tw' ||
+    normalized === 'zh-hk' ||
+    normalized === 'zh-mo' ||
+    normalized === 'zh-hant' ||
+    normalized === 'zhtw'
+  ) {
+    return 'zhTW'
   }
 
-  return INTERFACE_LANGUAGE_OPTIONS.some((lang) => lang.code === normalized)
-    ? normalized
-    : 'en'
+  const language = INTERFACE_LANGUAGE_OPTIONS.find(
+    (option) => option.code.toLowerCase() === normalized
+  )
+  return language?.code ?? 'en'
 }
 
 /**

@@ -357,7 +357,20 @@ func RenewSystemTaskLock(taskID string, lockedBy string, lockUntil int64) error 
 	if result.Error != nil {
 		return result.Error
 	}
-	if result.RowsAffected == 0 {
+	if result.RowsAffected > 0 {
+		return nil
+	}
+
+	// MySQL reports zero affected rows when the renewal writes the same values
+	// that are already stored. That is still a valid lease, not a lost lease.
+	// Confirm ownership and expiry before treating a zero-row update as loss.
+	var held int64
+	if err := DB.Model(&SystemTaskLock{}).
+		Where("task_id = ? AND locked_by = ? AND locked_until >= ?", taskID, lockedBy, now).
+		Count(&held).Error; err != nil {
+		return err
+	}
+	if held == 0 {
 		return ErrSystemTaskLockLost
 	}
 	return nil

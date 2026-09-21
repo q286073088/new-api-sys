@@ -205,6 +205,12 @@ export function useSidebarData(): SidebarData {
             activeUrls: ['/system-settings'],
             icon: Settings,
           },
+          {
+            title: t('Business Report'),
+            url: '/dashboard/business',
+            icon: ClipboardList,
+            requiredRole: ROLE.ADMIN,
+          },
         ],
       },
     ],

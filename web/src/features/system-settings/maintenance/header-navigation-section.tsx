@@ -286,9 +286,9 @@ export function HeaderNavigationSection({
               name='customerServiceQQ'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Customer service QQ')}</FormLabel>
+                  <FormLabel>{t('Customer service account')}</FormLabel>
                   <FormControl>
-                    <Input placeholder={t('Enter QQ number')} {...field} />
+                    <Input placeholder={t('Enter QQ or WeChat ID')} {...field} />
                   </FormControl>
                   <FormDescription>
                     {t('Displayed to users in the contact support dialog')}
@@ -310,7 +310,7 @@ export function HeaderNavigationSection({
                     />
                   </FormControl>
                   <FormDescription>
-                    {t('Image URL shown when users contact support')}
+                    {t('Image URL shown when users contact support. Leave empty if not needed.')}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

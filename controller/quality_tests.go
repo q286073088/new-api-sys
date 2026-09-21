@@ -208,6 +208,12 @@ func ListQualityTests(c *gin.Context) {
 	for i := range tests {
 		tests[i].LatestStatus = byTest[tests[i].ID].Status
 		tests[i].LatestAt = byTest[tests[i].ID].StartedAt
+		// A manual run is queued before the worker creates its result row.
+		// Surface that state immediately instead of showing an old result.
+		if tests[i].RequestedAt > 0 {
+			tests[i].LatestStatus = "running"
+			tests[i].LatestAt = tests[i].RequestedAt
+		}
 	}
 	if c.GetBool("quality_admin") {
 		common.ApiSuccess(c, tests)
@@ -330,7 +336,7 @@ func QualitySummary(c *gin.Context) {
 	}
 	now := time.Now().Unix()
 	if c.Query("from") == "" && c.Query("to") == "" {
-		query = query.Where("started_at >= ?", now-86400)
+		query = query.Where("started_at >= ?", now-48*3600)
 	}
 	var counts []struct {
 		Status string
@@ -356,10 +362,12 @@ func QualitySummary(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	// Always show a bounded rolling 24-hour timeline. History filters affect the
-	// counts/table; the timeline independently reflects the actual last day.
-	end := (now/1800 + 1) * 1800
-	start := end - 86400
+	// Always show a bounded rolling 48-hour timeline. History filters affect the
+	// counts/table; the timeline independently reflects the actual last 48 hours.
+	const timelineBucketSeconds int64 = 3600
+	const timelineBucketCount = 48
+	end := (now/timelineBucketSeconds + 1) * timelineBucketSeconds
+	start := end - timelineBucketSeconds*timelineBucketCount
 	timelineQuery := model.DB.Model(&model.QualityResult{}).Where("test_id IN (?)", qualityVisibleTests(c).Select("id")).Where("started_at >= ? AND started_at < ?", start, end)
 	if c.Query("test_id") != "" {
 		timelineQuery = timelineQuery.Where("test_id = ?", c.Query("test_id"))
@@ -380,13 +388,13 @@ func QualitySummary(c *gin.Context) {
 	priority := map[string]int{"": 0, "passed": 1, "running": 2, "pending": 3, "failed": 4}
 	for _, point := range points {
 		if timeline[point.TestID] == nil {
-			slots := make([]qualitySlot, 48)
+			slots := make([]qualitySlot, timelineBucketCount)
 			for i := range slots {
-				slots[i].Start = start + int64(i)*1800
+				slots[i].Start = start + int64(i)*timelineBucketSeconds
 			}
 			timeline[point.TestID] = slots
 		}
-		i := (point.StartedAt - start) / 1800
+		i := (point.StartedAt - start) / timelineBucketSeconds
 		slot := &timeline[point.TestID][i]
 		slot.Count++
 		if priority[point.Status] > priority[slot.Status] {

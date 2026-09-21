@@ -270,6 +270,9 @@ func TestRenewSystemTaskLock(t *testing.T) {
 
 	newLockUntil := common.GetTimestamp() + 600
 	require.NoError(t, RenewSystemTaskLock(task.TaskID, runnerID, newLockUntil))
+	// Renewing with the same expiry is a no-op in MySQL, but the lease remains
+	// valid and must not be reported as lost.
+	require.NoError(t, RenewSystemTaskLock(task.TaskID, runnerID, newLockUntil))
 
 	var lock SystemTaskLock
 	require.NoError(t, DB.Where("task_id = ?", task.TaskID).First(&lock).Error)

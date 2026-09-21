@@ -19,10 +19,10 @@ export function CustomerServiceDialog() {
   const { t } = useTranslation()
   const { status } = useStatus()
   const [open, setOpen] = useState(false)
-  const qq = String(status?.customer_service_qq ?? '').trim()
+  const account = String(status?.customer_service_qq ?? '').trim()
   const qrCode = String(status?.customer_service_qr_code ?? '').trim()
 
-  if (!qq && !qrCode) return null
+  if (!account && !qrCode) return null
 
   return (
     <>
@@ -41,7 +41,7 @@ export function CustomerServiceDialog() {
         open={open}
         onOpenChange={setOpen}
         title={t('Contact support')}
-        description={t('Scan the QR code or copy the QQ number to contact support')}
+        description={t('Scan the QR code or copy the customer service account to contact support')}
         contentClassName='sm:max-w-md'
         contentHeight='auto'
         footer={
@@ -64,17 +64,17 @@ export function CustomerServiceDialog() {
               <QrCode className='size-12' aria-hidden='true' />
             </div>
           )}
-          {qq ? (
+          {account ? (
             <div className='flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2'>
               <div className='min-w-0'>
-                <div className='text-muted-foreground text-xs'>{t('Customer service QQ')}</div>
-                <div className='truncate text-sm font-medium'>{qq}</div>
+                <div className='text-muted-foreground text-xs'>{t('Customer service account')}</div>
+                <div className='truncate text-sm font-medium'>{account}</div>
               </div>
               <CopyButton
-                value={qq}
+                value={account}
                 variant='outline'
                 size='sm'
-                tooltip={t('Copy QQ number')}
+                tooltip={t('Copy customer service account')}
               >
                 {t('Copy')}
               </CopyButton>
