@@ -38,6 +38,9 @@ func RecordRelayResult(ctx context.Context, info *relaycommon.RelayInfo, apiErr 
 	if outcome == OutcomeIgnored {
 		return
 	}
+	if outcome == OutcomeFailure && apiErr != nil && perf_metrics_setting.GetSetting().ExcludesStatus(apiErr.StatusCode) {
+		return
+	}
 	now := time.Now()
 	hasTtft := info.IsStream && info.HasSendResponse()
 	ttftMs := int64(0)

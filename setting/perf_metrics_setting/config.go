@@ -72,3 +72,8 @@ func GetFlushIntervalMinutes() int {
 	}
 	return perfMetricsSetting.FlushInterval
 }
+
+func SetTestExclusion(enabled bool, codes string) {
+	perfMetricsSetting.ExcludeErrorsEnabled = enabled
+	perfMetricsSetting.ExcludedStatusCodes = codes
+}

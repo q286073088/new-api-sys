@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -251,4 +252,30 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 			assert.Equal(t, 99.01, combined.Models[0].SuccessRate)
 		})
 	}
+}
+
+func TestRecordRelayResultExcludesConfiguredFailureStatus(t *testing.T) {
+	setting := perf_metrics_setting.GetSetting()
+	oldEnabled, oldCodes := setting.ExcludeErrorsEnabled, setting.ExcludedStatusCodes
+	perf_metrics_setting.SetTestExclusion(true, "429,524")
+	t.Cleanup(func() { perf_metrics_setting.SetTestExclusion(oldEnabled, oldCodes) })
+	hotBuckets.Clear()
+	t.Cleanup(hotBuckets.Clear)
+
+	RecordRelayResult(context.Background(), &relaycommon.RelayInfo{
+		OriginModelName: "excluded-status-model",
+		UsingGroup:      "default",
+		StartTime:       time.Now(),
+	}, types.NewOpenAIError(errors.New("upstream unavailable"), types.ErrorCodeDoRequestFailed, 524))
+
+	require.Empty(t, func() any {
+		var found any
+		hotBuckets.Range(func(key, value any) bool {
+			if key.(bucketKey).model == "excluded-status-model" {
+				found = value
+			}
+			return true
+		})
+		return found
+	}())
 }
