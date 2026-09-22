@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -92,23 +91,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			service.RecordRequestPolicyTermination(c, newAPIError)
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
-			if c.Request.Context().Err() != nil {
-				return
-			}
-			if relayFormat != types.RelayFormatOpenAIRealtime && c.Writer.Written() {
-				if newAPIError.GetErrorCode() == types.ErrorCodeMissingUsage && strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
-					switch relayFormat {
-					case types.RelayFormatClaude:
-						_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: newAPIError.ToClaudeError()})
-					case types.RelayFormatOpenAIResponses:
-						data := common.GetJsonString(gin.H{"type": "error", "code": newAPIError.GetErrorCode(), "message": newAPIError.Error()})
-						_ = helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: "error"}, data)
-					default:
-						_ = helper.ObjectData(c, gin.H{"error": newAPIError.ToOpenAIError()})
-					}
-				}
-				return
-			}
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -125,9 +107,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
-	common.MarkRequestPhase(c.Request.Context(), "request_validation_started")
 	request, err := helper.GetAndValidateRequest(c, relayFormat)
-	common.MarkRequestPhase(c.Request.Context(), "request_validation_finished")
 	if err != nil {
 		// Map "request body too large" to 413 so clients can handle it correctly
 		if common.IsRequestBodyTooLargeError(err) || errors.Is(err, common.ErrRequestBodyTooLarge) {
@@ -174,19 +154,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
-	model.BeginRelayErrorLogs(c)
-	var finalPerformanceSample *perfmetrics.Sample
-	defer func() {
-		model.FlushRelayErrorLogs(c, newAPIError == nil)
-		if finalPerformanceSample != nil {
-			sample := *finalPerformanceSample
-			gopool.Go(func() { perfmetrics.Record(sample) })
-		}
-	}()
 
 	requestIsStream := relayInfo.IsStream
 	for ; retryParam.GetRemainingRetries() >= 0; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.Attempt
+		relayInfo.StreamStatus = nil
+		relayInfo.IsStream = requestIsStream
+		common.SetContextKey(c, constant.ContextKeyLocalCountTokens, false)
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
@@ -210,11 +184,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
-		relayInfo.PerformanceAttempt = &relaycommon.RelayPerformanceAttempt{StartedAt: time.Now()}
-		relayInfo.StreamStatus = nil
-		relayInfo.IsStream = requestIsStream
-		common.SetContextKey(c, constant.ContextKeyLocalCountTokens, false)
-		responseHeaders := c.Writer.Header().Clone()
 
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
@@ -226,36 +195,21 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		default:
 			newAPIError = relayHandler(c, relayInfo)
 		}
-		sample := perfmetrics.CaptureRelaySample(relayInfo, newAPIError == nil, relayInfo.PerformanceAttempt.OutputTokens, time.Now())
-		if newAPIError != nil {
-			sample.StatusCode = newAPIError.StatusCode
-		}
-		finalPerformanceSample = &sample
 
 		if newAPIError == nil {
 			service.MarkRequestPolicySuccess(c, relayInfo.StreamStatus)
 			relayInfo.LastError = nil
 			return
 		}
-		if !c.Writer.Written() {
-			// An empty stream may have prepared SSE headers without sending
-			// them. Discard those headers before another channel or a JSON error.
-			clear(c.Writer.Header())
-			maps.Copy(c.Writer.Header(), responseHeaders)
-			c.Set("event_stream_headers_set", false)
-		}
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
-		if newAPIError.GetErrorCode() == types.ErrorCodeMissingUsage && relayInfo.StreamStatus != nil {
-			relayInfo.StreamStatus.RecordError(newAPIError.Error())
-		}
 
-		decision := service.DecideRelayRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry())
+		decision := service.DecideRelayRetry(c, newAPIError, retryParam.GetRemainingRetries())
 		service.RecordPolicyFailure(c, channel.Id, newAPIError, decision)
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError, relayInfo)
 
-		if !shouldRetry(c, newAPIError, retryParam.GetRemainingRetries()) {
+		if decision.Action != "retry" {
 			break
 		}
 	}
@@ -340,75 +294,8 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	return channel, nil
 }
 
-func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
-	if openaiErr == nil {
-		return false
-	}
-	if c.Writer.Written() || c.Request.Context().Err() != nil {
-		return false
-	}
-	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
-		return false
-	}
-	if types.IsChannelError(openaiErr) {
-		return true
-	}
-	if types.IsSkipRetryError(openaiErr) {
-		return false
-	}
-	if retryTimes <= 0 {
-		return false
-	}
-	if service.GetChannelConstraints(c).SuppressesRetry() {
-		return false
-	}
-	code := openaiErr.StatusCode
-	if code >= 200 && code < 300 {
-		return false
-	}
-	if code < 100 || code > 599 {
-		return true
-	}
-	if operation_setting.IsAlwaysSkipRetryCode(openaiErr.GetErrorCode()) {
-		return false
-	}
-	return operation_setting.ShouldRetryByStatusCode(code)
-}
-
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError, relayInfo *relaycommon.RelayInfo) {
-	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
-	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
-	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
-	if service.ShouldDisableChannel(err) && channelError.AutoBan {
-		gopool.Go(func() {
-			service.DisableChannel(channelError, err.ErrorWithStatusCode())
-		})
-	}
-
-	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) && !c.GetBool("channel_test_error_logged") {
-		// 保存错误日志到mysql中
-		userId := c.GetInt("id")
-		tokenName := c.GetString("token_name")
-		modelName := c.GetString("original_model")
-		tokenId := c.GetInt("token_id")
-		userGroup := c.GetString("group")
-		other := model.NewLogOther()
-		if c.Request != nil && c.Request.URL != nil {
-			other.SetPublic("request_path", c.Request.URL.Path)
-		}
-		other.SetPublic("error_type", err.GetErrorType())
-		other.SetPublic("error_code", err.GetErrorCode())
-		other.SetPublic("status_code", err.StatusCode)
-		service.AppendRelayLogAdminInfo(c, relayInfo, other)
-		service.AppendTaskPluginContextAuditInfo(c, other)
-		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
-		if startTime.IsZero() {
-			startTime = time.Now()
-		}
-		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelError.ChannelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
-	}
-
+	service.ProcessChannelError(c, channelError, err, relayInfo)
 }
 
 func RelayMidjourney(c *gin.Context) {
@@ -615,10 +502,7 @@ func executeTaskSubmissionWith(
 		Retry:       common.GetPointer(0),
 	}
 
-	model.BeginRelayErrorLogs(c)
-	defer func() { model.FlushRelayErrorLogs(c, taskErr == nil && result != nil) }()
 	for ; retryParam.GetRemainingRetries() >= 0; retryParam.IncreaseRetry() {
-		relayInfo.RetryIndex = retryParam.Attempt
 		stage = "select_channel"
 		if requestErr := c.Request.Context().Err(); requestErr != nil {
 			diagnostics.cancelled("before_attempt", retryParam.Attempt+1)
@@ -674,7 +558,7 @@ func executeTaskSubmissionWith(
 
 		taskAPIError := taskSubmissionAPIError(taskErr)
 		relayInfo.LastError = taskAPIError
-		decision := decideTaskRetry(c, taskErr, common.RetryTimes-retryParam.GetRetry())
+		decision := decideTaskRetry(c, taskErr, retryParam.GetRemainingRetries())
 		service.RecordPolicyFailure(c, channel.Id, taskAPIError, decision)
 		if !taskErr.LocalError {
 			processChannelError(c,
@@ -684,7 +568,7 @@ func executeTaskSubmissionWith(
 				relayInfo)
 		}
 
-		willRetry := shouldRetryTaskRelay(c, channel.Id, taskErr, retryParam.GetRemainingRetries())
+		willRetry := decision.Action == "retry"
 		diagnostics.attemptFailed(retryParam.Attempt+1, channel, taskErr, willRetry)
 		if !willRetry {
 			break
@@ -707,7 +591,7 @@ func executeTaskSubmissionWith(
 		return nil, taskErr
 	}
 	if requestErr := c.Request.Context().Err(); requestErr != nil {
-		diagnostics.cancelled("before_reserve", retryParam.Attempt+1)
+		diagnostics.cancelled("before_reserve", retryParam.GetRetry()+1)
 		return nil, service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
 	}
 
@@ -726,7 +610,7 @@ func executeTaskSubmissionWith(
 		diagnostics.reserve("reserve_complete", result.Quota)
 	}
 	if requestErr := c.Request.Context().Err(); requestErr != nil {
-		diagnostics.cancelled("before_insert", retryParam.Attempt+1)
+		diagnostics.cancelled("before_insert", retryParam.GetRetry()+1)
 		return nil, service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
 	}
 

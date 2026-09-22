@@ -81,7 +81,6 @@ type TokenCountMeta struct {
 	estimatePromptTokens int
 }
 
-// UpstreamDiagnostics describes one HTTP attempt without retaining its body or headers.
 type UpstreamDiagnostics struct {
 	StartedAt   time.Time
 	CompletedAt time.Time
@@ -92,15 +91,6 @@ type UpstreamDiagnostics struct {
 	Timeout     time.Duration
 	Err         error
 }
-
-// RelayPerformanceAttempt keeps model-square timing separate from the complete
-// request duration retained in administrator diagnostics and usage logs.
-type RelayPerformanceAttempt struct {
-	StartedAt         time.Time
-	FirstResponseTime time.Time
-	OutputTokens      int64
-}
-
 type RelayInfo struct {
 	MissingBillableUsage bool
 	TokenId              int
@@ -113,7 +103,6 @@ type RelayInfo struct {
 	StartTime            time.Time
 	FirstResponseTime    time.Time
 	isFirstResponse      bool
-	PerformanceAttempt   *RelayPerformanceAttempt
 	//SendLastReasoningResponse bool
 	IsStream               bool
 	IsGeminiBatchEmbedding bool
@@ -216,6 +205,10 @@ type RelayInfo struct {
 
 	StreamStatus        *StreamStatus
 	UpstreamDiagnostics *UpstreamDiagnostics
+	// PerformanceOutputTokens is captured by settlement and sampled once at
+	// the request boundary, independently of billing success or failure.
+	PerformanceOutputTokens      int64
+	PerformanceBusinessRejection bool
 
 	// convOptions caches the converter settings snapshot (see ConvOptions).
 	convOptions *convmeta.Options
@@ -262,8 +255,7 @@ func (info *RelayInfo) RequestedImageCount() int {
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
-	info.UpstreamDiagnostics = nil
-	info.MissingBillableUsage = false
+	info.ResponseModel = nil
 	info.FinalRequestRelayFormat = ""
 	info.RequestConversionChain = nil
 	info.InitRequestConversionChain()
@@ -973,12 +965,8 @@ func (info *RelayInfo) ConvOptions() *convmeta.Options {
 }
 
 func (info *RelayInfo) SetFirstResponseTime() {
-	now := time.Now()
-	if info.PerformanceAttempt != nil && info.PerformanceAttempt.FirstResponseTime.IsZero() {
-		info.PerformanceAttempt.FirstResponseTime = now
-	}
 	if info.isFirstResponse {
-		info.FirstResponseTime = now
+		info.FirstResponseTime = time.Now()
 		info.isFirstResponse = false
 	}
 }

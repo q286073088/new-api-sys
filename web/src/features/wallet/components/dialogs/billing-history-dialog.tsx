@@ -46,7 +46,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatCurrencyFromUSD } from '@/lib/currency'
-import { formatNumber, formatQuota } from '@/lib/format'
+import { formatNumber } from '@/lib/format'
 
 import { useBillingHistory } from '../../hooks/use-billing-history'
 import {
@@ -149,15 +149,23 @@ export function BillingHistoryDialog({
           <div className='max-h-[min(54vh,520px)] overflow-y-auto pr-1'>
             {loading && (
               <div className='space-y-3'>
-                {[1, 2, 3, 4, 5].map((placeholderId) => (
-                  <div
-                    key={placeholderId}
-                    className='rounded-lg border p-3 sm:p-4'
-                  >
-                    <div className='flex items-start justify-between'>
-                      <div className='flex-1 space-y-2'>
-                        <Skeleton className='h-4 w-48' />
-                        <Skeleton className='h-3 w-32' />
+                {['first', 'second', 'third', 'fourth', 'fifth'].map(
+                  (placeholder) => (
+                    <div
+                      key={placeholder}
+                      className='rounded-lg border p-3 sm:p-4'
+                    >
+                      <div className='flex items-start justify-between'>
+                        <div className='flex-1 space-y-2'>
+                          <Skeleton className='h-4 w-48' />
+                          <Skeleton className='h-3 w-32' />
+                        </div>
+                        <Skeleton className='h-5 w-16' />
+                      </div>
+                      <div className='mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4'>
+                        <Skeleton className='h-3 w-full' />
+                        <Skeleton className='h-3 w-full' />
+                        <Skeleton className='h-3 w-full' />
                       </div>
                     </div>
                   )
@@ -240,13 +248,11 @@ export function BillingHistoryDialog({
                             {t('Amount')}
                           </Label>
                           <div className='text-sm font-semibold'>
-                            {record.payment_method === 'admin'
-                              ? formatQuota(record.amount)
-                              : formatCurrencyFromUSD(record.amount, {
-                                  digitsLarge: 2,
-                                  digitsSmall: 2,
-                                  abbreviate: false,
-                                })}
+                            {formatCurrencyFromUSD(record.amount, {
+                              digitsLarge: 2,
+                              digitsSmall: 2,
+                              abbreviate: false,
+                            })}
                           </div>
                         </div>
                         <div className='space-y-1'>
@@ -254,9 +260,7 @@ export function BillingHistoryDialog({
                             {t('Payment')}
                           </Label>
                           <div className='text-sm font-semibold text-red-600'>
-                            {record.payment_method === 'admin'
-                              ? '—'
-                              : formatNumber(record.money)}
+                            {formatNumber(record.money)}
                           </div>
                         </div>
                       </div>

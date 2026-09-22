@@ -14,6 +14,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
+
 	"github.com/bytedance/gopkg/util/gopool"
 )
 
@@ -27,41 +28,31 @@ func Init() {
 	go flushLoop()
 }
 
-func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens int64) {
-	if info != nil && info.PerformanceAttempt != nil {
-		// The relay controller publishes only the final actual attempt. Billing
-		// supplies its token usage without publishing an intermediate sample.
-		info.PerformanceAttempt.OutputTokens = outputTokens
+// RecordRelayResult samples one finished relay exactly once, at the request
+// boundary, regardless of how many channel attempts it took.
+func RecordRelayResult(ctx context.Context, info *relaycommon.RelayInfo, apiErr *types.NewAPIError) {
+	if info == nil {
 		return
 	}
-	sample := CaptureRelaySample(info, success, outputTokens, time.Now())
-	gopool.Go(func() { Record(sample) })
-}
-
-// CaptureRelaySample freezes an attempt before retries can replace its channel,
-// group or timing. completedAt also excludes background publishing delays.
-func CaptureRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens int64, completedAt time.Time) Sample {
-	if info == nil {
-		return Sample{}
+	outcome := ClassifyRelayOutcome(ctx, info, apiErr)
+	if outcome == OutcomeIgnored {
+		return
 	}
-	start, firstResponse := info.StartTime, info.FirstResponseTime
-	if attempt := info.PerformanceAttempt; attempt != nil {
-		start, firstResponse = attempt.StartedAt, attempt.FirstResponseTime
-	}
-	hasTtft := info.IsStream && firstResponse.After(start)
+	now := time.Now()
+	hasTtft := info.IsStream && info.HasSendResponse()
 	ttftMs := int64(0)
 	if hasTtft {
-		ttftMs = firstResponse.Sub(start).Milliseconds()
+		ttftMs = info.FirstResponseTime.Sub(info.StartTime).Milliseconds()
 	}
-	latencyMs := completedAt.Sub(start).Milliseconds()
+	latencyMs := now.Sub(info.StartTime).Milliseconds()
 	generationMs := latencyMs
 	if hasTtft {
-		generationMs = completedAt.Sub(firstResponse).Milliseconds()
+		generationMs = now.Sub(info.FirstResponseTime).Milliseconds()
 	}
 	if generationMs <= 0 {
 		generationMs = latencyMs
 	}
-	return Sample{
+	Record(Sample{
 		Model:        info.OriginModelName,
 		Group:        info.UsingGroup,
 		LatencyMs:    latencyMs,
@@ -70,7 +61,7 @@ func CaptureRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens 
 		Success:      outcome == OutcomeSuccess,
 		OutputTokens: info.PerformanceOutputTokens,
 		GenerationMs: generationMs,
-	}
+	})
 }
 
 // RecordTaskResult samples one async task exactly once, at its terminal
@@ -110,7 +101,7 @@ func RecordTaskResult(task *model.Task, result *relaycommon.TaskInfo) {
 
 func Record(sample Sample) {
 	setting := perf_metrics_setting.GetSetting()
-	if !setting.Enabled || sample.Model == "" || (!sample.Success && setting.ExcludesStatus(sample.StatusCode)) {
+	if !setting.Enabled || sample.Model == "" {
 		return
 	}
 	if sample.Group == "" {
@@ -206,20 +197,16 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 
 	totals := map[string]counters{}
 	modelBuckets := map[string]map[int64]counters{}
-	groupTotals := map[bucketKey]counters{}
 	for _, row := range rows {
 		value := counters{
 			requestCount:   row.RequestCount,
 			successCount:   row.SuccessCount,
 			totalLatencyMs: row.TotalLatencyMs,
-			ttftSumMs:      row.TtftSumMs,
-			ttftCount:      row.TtftCount,
 			outputTokens:   row.OutputTokens,
 			generationMs:   row.GenerationMs,
 		}
 		mergeModelTotals(totals, row.ModelName, value)
 		mergeModelBucket(modelBuckets, row.ModelName, row.BucketTs, value)
-		mergeCounters(groupTotals, bucketKey{model: row.ModelName, group: row.Group}, value)
 	}
 
 	hotBuckets.Range(func(key, value any) bool {
@@ -238,11 +225,10 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 		}
 		mergeModelTotals(totals, k.model, snap)
 		mergeModelBucket(modelBuckets, k.model, k.bucketTs, snap)
-		mergeCounters(groupTotals, bucketKey{model: k.model, group: k.group}, snap)
 		return true
 	})
 
-	bestGroups := selectBestGroupPerformances(groupTotals)
+	all := counters{}
 	models := make([]ModelSummary, 0, len(totals))
 	for name, total := range totals {
 		if total.requestCount == 0 {
@@ -264,7 +250,6 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 			AvgLatencyMs:        avgLatency,
 			SuccessRate:         math.Round(successRate*100) / 100,
 			AvgTps:              math.Round(avgTps*100) / 100,
-			BestGroup:           bestGroups[name],
 			RecentSuccessSeries: recentSuccessSeries(modelBuckets[name]),
 			RequestCount:        total.requestCount,
 		})
@@ -274,26 +259,6 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 	})
 
 	return SummaryAllResult{Summary: summarize(all), WindowStart: startTs, WindowEnd: endTs, Models: models}, nil
-}
-
-func selectBestGroupPerformances(totals map[bucketKey]counters) map[string]*BestGroupPerformance {
-	best := make(map[string]*BestGroupPerformance)
-	for key, total := range totals {
-		ttft := avg(total.ttftSumMs, total.ttftCount)
-		if total.requestCount <= 0 || ttft <= 0 {
-			continue
-		}
-		current := best[key.model]
-		// Equal mean TTFT values use a stable group order. Throughput always
-		// belongs to the selected group, even when that group has no token usage.
-		if current != nil && (ttft > current.AvgTtftMs || (ttft == current.AvgTtftMs && key.group >= current.Group)) {
-			continue
-		}
-		best[key.model] = &BestGroupPerformance{
-			Group: key.group, AvgTtftMs: ttft, AvgTps: avgTps(total),
-		}
-	}
-	return best
 }
 
 func mergeModelTotals(totals map[string]counters, modelName string, value counters) {

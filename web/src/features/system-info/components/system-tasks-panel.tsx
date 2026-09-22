@@ -28,51 +28,8 @@ import { listSystemTasks } from '@/features/system-settings/api'
 import { createServerError } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
-const TASK_LIMIT = 20
-const ACTIVE_POLL_INTERVAL_MS = 8000
-
-const STATUS_VARIANT: Record<SystemTaskStatus, 'secondary' | 'destructive'> = {
-  pending: 'secondary',
-  running: 'secondary',
-  succeeded: 'secondary',
-  failed: 'destructive',
-}
-
-const STATUS_CLASS_NAME: Record<SystemTaskStatus, string> = {
-  pending:
-    'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-  running:
-    'bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300 [&_span]:bg-sky-500',
-  succeeded:
-    'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
-  failed: '',
-}
-
-const STATUS_DOT_CLASS_NAME: Record<SystemTaskStatus, string> = {
-  pending: 'bg-amber-500',
-  running: 'bg-sky-500',
-  succeeded: 'bg-emerald-500',
-  failed: 'bg-destructive',
-}
-
-const PROGRESS_BAR_CLASS_NAME: Record<SystemTaskStatus, string> = {
-  pending: '[&_[data-slot=progress-indicator]]:bg-amber-500',
-  running: '[&_[data-slot=progress-indicator]]:bg-sky-500',
-  succeeded: '[&_[data-slot=progress-indicator]]:bg-emerald-500',
-  failed: '[&_[data-slot=progress-indicator]]:bg-destructive',
-}
-
-// Maps backend system task type constants to i18n source keys. Unknown/future
-// types fall back to their raw identifier so the panel never shows blank.
-const TYPE_LABEL: Record<string, string> = {
-  log_cleanup: 'Log cleanup',
-  channel_test: 'Batch channel test',
-  model_update: 'Batch upstream model update',
-  midjourney_poll: 'Drawing task polling',
-  async_task_poll: 'Async task polling',
-  referral_settlement: 'Referral reward settlement',
-  email_delivery: 'Email delivery',
-}
+import { SystemTaskHistory } from './system-task-history'
+import { SystemTasksTable } from './system-tasks-table'
 
 const ACTIVE_POLL_INTERVAL_MS = 8000
 

@@ -17,8 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ConfigDrawer } from '@/components/config-drawer'
-import { ConsoleAnnouncementDialog } from '@/components/console-announcement-dialog'
-import { CustomerServiceDialog } from '@/components/customer-service-dialog'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
@@ -124,40 +122,33 @@ export function AppHeader({
         <div className='ms-2 flex items-center'>{leftContent}</div>
       ) : null}
 
-        {rightContent ?? (
-          <div className='ms-auto flex items-center gap-1 sm:gap-2'>
-            {showTopNav && (
-              <div className='me-1 hidden lg:block'>
-                <TopNav links={links} />
-              </div>
-            )}
-            {showSearch && <Search />}
-            <CustomerServiceDialog />
-            {showNotifications && (
-              <NotificationPopover
-                open={notifications.popoverOpen}
-                onOpenChange={notifications.setPopoverOpen}
-                unreadCount={notifications.unreadCount}
-                activeTab={notifications.activeTab}
-                onTabChange={notifications.setActiveTab}
-                notice={notifications.notice}
-                announcements={notifications.announcements}
-                loading={notifications.loading}
-              />
-            )}
-            <LanguageSwitcher />
-            {showConfigDrawer && <ConfigDrawer />}
-            {showProfileDropdown && <ProfileDropdown />}
-          </div>
-        )}
-      </Header>
-      {showNotifications && (
-        <ConsoleAnnouncementDialog
-          notice={notifications.notice}
-          announcements={notifications.announcements}
-          loading={notifications.loading}
-        />
+      {rightContent ?? (
+        <div className='ms-auto flex shrink-0 items-center gap-1 sm:gap-2'>
+          {showTopNav && (
+            <div className='me-1 hidden lg:block'>
+              <TopNav links={links} />
+            </div>
+          )}
+          {showSearch && (
+            <Search className='w-8 flex-none [&>span]:hidden sm:[&>span]:inline' />
+          )}
+          {showNotifications && (
+            <NotificationPopover
+              open={notifications.popoverOpen}
+              onOpenChange={notifications.setPopoverOpen}
+              unreadCount={notifications.unreadCount}
+              activeTab={notifications.activeTab}
+              onTabChange={notifications.setActiveTab}
+              notice={notifications.notice}
+              announcements={notifications.announcements}
+              loading={notifications.loading}
+            />
+          )}
+          <LanguageSwitcher />
+          {showConfigDrawer && <ConfigDrawer />}
+          {showProfileDropdown && <ProfileDropdown />}
+        </div>
       )}
-    </>
+    </Header>
   )
 }

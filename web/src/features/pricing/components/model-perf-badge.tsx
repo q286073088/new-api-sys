@@ -55,20 +55,19 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
     Number.isFinite(successRate) &&
     successRate >= 0 &&
     successRate <= 100
-  // Hourly points use the server window, including the current partial hour.
+  // Hourly points with timestamps, anchored to the client's current hour.
   // Hours without traffic stay gray. Slot 23 is the current, partial hour.
   const statusRates = useMemo(() => {
-    const windowStart = props.perf?.window_start
-    if (windowStart == null) return STATUS_SLOTS.map(() => undefined)
+    const currentHourStart = Math.floor(Date.now() / 1000 / 3600) * 3600
     const ratesByHour = new Map<number, number>()
     for (const point of props.perf?.recent_success_series ?? []) {
       ratesByHour.set(point.ts, point.success_rate)
     }
     return STATUS_SLOTS.map((slot) => {
-      const hourStart = windowStart + slot * 3600
+      const hourStart = currentHourStart - (23 - slot) * 3600
       return ratesByHour.get(hourStart)
     })
-  }, [props.perf?.recent_success_series, props.perf?.window_start])
+  }, [props.perf?.recent_success_series])
 
   return (
     <div
@@ -81,14 +80,12 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
       <dl className='flex min-w-0 items-start gap-5 text-xs tabular-nums'>
         <div className='w-24 shrink-0'>
           <dt
-            title={t(
-              'Success rate excludes business rejections and includes the current partial hour.'
-            )}
+            title={t('Request success rate sampled over the last 24 hours')}
             className='text-muted-foreground flex items-center justify-between gap-1 text-[11px] leading-4'
           >
             <span>{t('Status')}</span>
             <span className='font-mono'>
-              {hasSuccessRate ? `${successRate.toFixed(2)}%` : '—'}
+              {hasSuccessRate ? `${successRate.toFixed(1)}%` : '—%'}
             </span>
           </dt>
           <dd
@@ -99,7 +96,7 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
             title={t(
               'Recent success-rate samples; gray bars indicate missing data.'
             )}
-            className='mt-1 flex h-3 w-24 items-center gap-px'
+            className='mt-1 flex h-3 w-24 items-center justify-between'
           >
             {STATUS_SLOTS.map((slot) => {
               const rate = statusRates[slot]

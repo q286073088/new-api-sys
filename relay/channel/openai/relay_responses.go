@@ -36,13 +36,15 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
+	info.ObserveResponseModel(responsesResponse.Model)
+	responseBody = rewriteSGLangResponsesCreatedAt(info, responseBody, "created_at", responsesResponse.CreatedAt)
+
+	// 写入新的 response body
+	service.IOCopyBytesGracefully(c, resp, responseBody)
+
 	// compute usage
-	usage := relayconvert.NormalizeResponsesUsage(responsesResponse.Usage)
-	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
-		if text := service.ExtractOutputTextFromResponses(&responsesResponse); text != "" {
-			usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
-		}
-	}
+	usage := &dto.Usage{}
+	service.ApplyResponsesUsage(usage, responsesResponse.Usage)
 	// Count actual tool invocations from Output (not tool declarations).
 	for _, output := range responsesResponse.Output {
 		switch output.Type {
@@ -63,10 +65,6 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		}
 	}
 	imageCounter.Commit(info)
-	if err := service.ValidateTextUsage(c, info, usage); err != nil {
-		return nil, err
-	}
-	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	return usage, nil
 }
@@ -79,13 +77,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	defer service.CloseResponseBodyGracefully(resp)
 
-	var usage = &dto.Usage{}
-	var responseTextBuilder strings.Builder
-	imageCounter := &relaycommon.ImageGenerationCallCounter{}
-	imageCommitted := false
-	var terminalResponse dto.ResponsesStreamResponse
-	var terminalData string
-	var streamErr *types.NewAPIError
+	accumulator := service.NewResponsesUsageAccumulator(info)
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -96,98 +88,17 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
-		switch streamResponse.Type {
-		case "response.completed", "response.done":
-			if streamResponse.Response != nil {
-				if streamResponse.Response.Usage != nil {
-					incomingUsage := relayconvert.NormalizeResponsesUsage(streamResponse.Response.Usage)
-					usage = dto.MergeUsageNonZero(usage, incomingUsage)
-				}
-				if !imageCommitted {
-					if relaycommon.IsNonBillableResponsesStatus(streamResponse.Response.Status) {
-						imageCounter.Reset()
-						imageCounter.Commit(info)
-						imageCommitted = true
-					} else {
-						for i := range streamResponse.Response.Output {
-							idx := i
-							imageCounter.Observe(&streamResponse.Response.Output[i], &idx)
-						}
-						imageCounter.Commit(info)
-						imageCommitted = true
-					}
-				}
-			} else if !imageCommitted {
-				imageCounter.Commit(info)
-				imageCommitted = true
-			}
-		case "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
-			var oaiErr *types.OpenAIError
-			if streamResponse.Response != nil {
-				oaiErr = streamResponse.Response.GetOpenAIError()
-			}
-			if oaiErr == nil {
-				oaiErr = dto.GetOpenAIError(streamResponse.Error)
-			}
-			if oaiErr == nil && strings.TrimSpace(streamResponse.Message) != "" {
-				oaiErr = &types.OpenAIError{Type: "upstream_error", Message: streamResponse.Message, Code: streamResponse.Code}
-			}
-			if oaiErr != nil && strings.TrimSpace(oaiErr.Message) != "" {
-				streamErr = types.WithOpenAIError(*oaiErr, http.StatusInternalServerError)
-				sr.Stop(streamErr)
-				return
-			}
-
-			if streamResponse.Response != nil && streamResponse.Response.Usage != nil {
-				usage = dto.MergeUsageNonZero(usage, relayconvert.NormalizeResponsesUsage(streamResponse.Response.Usage))
-			}
-			if !imageCommitted {
-				imageCounter.Reset()
-				imageCounter.Commit(info)
-				imageCommitted = true
-			}
-		case "response.output_text.delta":
-			// 处理输出文本
-			responseTextBuilder.WriteString(streamResponse.Delta)
-		case dto.ResponsesOutputTypeItemDone:
-			if streamResponse.Item != nil {
-				switch streamResponse.Item.Type {
-				case dto.BuildInCallWebSearchCall:
-					info.CountBillableToolCall(dto.BuildInCallWebSearchCall, "")
-				case dto.BuildInCallFileSearchCall:
-					info.CountBillableToolCall(dto.BuildInCallFileSearchCall, "")
-				case dto.BuildInCallFunctionCall:
-					info.CountBillableToolCall(dto.BuildInCallFunctionCall, streamResponse.Item.Name)
-				case dto.ResponsesOutputTypeImageGenerationCall:
-					if !imageCommitted {
-						imageCounter.Observe(streamResponse.Item, streamResponse.OutputIndex)
-					}
-				}
-			}
+		if streamResponse.Response != nil {
+			data = string(rewriteSGLangResponsesCreatedAt(info, []byte(data), "response.created_at", streamResponse.Response.CreatedAt))
 		}
-		switch streamResponse.Type {
-		case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
-			// Do not announce completion until usage has been validated.
-			terminalResponse, terminalData = streamResponse, data
-			sr.Done()
-		default:
-			sendResponsesStreamData(c, streamResponse, data)
-		}
+		sendResponsesStreamData(c, streamResponse, data)
+		accumulator.Observe(&streamResponse)
 	})
 
-	if streamErr != nil {
-		return nil, streamErr
-	}
-
-	if usage.CompletionTokens == 0 {
-		// 计算输出文本的 token 数量
-		tempStr := responseTextBuilder.String()
-		if len(tempStr) > 0 {
-			// 非正常结束，使用输出文本的 token 数量
-			completionTokens := service.CountTextToken(tempStr, info.UpstreamModelName)
-			usage.CompletionTokens = completionTokens
-		}
-	}
+	common.SetContextKey(c, constant.ContextKeyResponseStreamStatus, info.StreamStatus)
+	info.StreamStatus.RequireTerminal()
+	return accumulator.Finish(), nil
+}
 
 func rewriteSGLangResponsesCreatedAt(info *relaycommon.RelayInfo, payload []byte, path string, createdAt dto.IntValue) []byte {
 	if info.GetChannelType() != constant.ChannelTypeSGLang {
@@ -196,10 +107,9 @@ func rewriteSGLangResponsesCreatedAt(info *relaycommon.RelayInfo, payload []byte
 	if !gjson.GetBytes(payload, path).Exists() {
 		return payload
 	}
-	if err := service.ValidateTextUsage(c, info, usage); err != nil {
-		return nil, err
+	patched, err := sjson.SetBytes(payload, path, int(createdAt))
+	if err != nil {
+		return payload
 	}
-	sendResponsesStreamData(c, terminalResponse, terminalData)
-
-	return usage, nil
+	return patched
 }

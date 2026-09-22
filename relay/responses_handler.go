@@ -89,11 +89,11 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			info.PriceData = originPriceData
 			return types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithSkipRetry(), types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		}
-		newAPIError = service.PostTextConsumeQuota(c, info, usageDto, nil)
+		service.PostTextConsumeQuota(c, info, usageDto, nil)
 
 		info.OriginModelName = originModelName
 		info.PriceData = originPriceData
-		return newAPIError
+		return nil
 	}
 
 	ConsumeResponsesQuota(c, info, usageDto)
@@ -104,9 +104,8 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 // WebSocket Responses usage. Compact requests keep their separate repricing.
 func ConsumeResponsesQuota(c *gin.Context, info *relaycommon.RelayInfo, usage *dto.Usage) {
 	if strings.HasPrefix(info.OriginModelName, "gpt-4o-audio") {
-		service.PostAudioConsumeQuota(c, info, usageDto, "")
-	} else {
-		return service.PostTextConsumeQuota(c, info, usageDto, nil)
+		service.PostAudioConsumeQuota(c, info, usage, "")
+		return
 	}
 	service.PostTextConsumeQuota(c, info, usage, nil)
 }

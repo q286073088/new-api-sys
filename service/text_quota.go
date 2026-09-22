@@ -581,6 +581,6 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
 	})
-	perfmetrics.RecordRelaySample(relayInfo, true, int64(summary.CompletionTokens))
+	relayInfo.PerformanceOutputTokens = int64(summary.CompletionTokens)
 	return nil
 }

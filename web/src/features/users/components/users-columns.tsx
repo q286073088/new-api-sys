@@ -51,39 +51,19 @@ export function useUsersColumns(): ColumnDef<User>[] {
   const currencyConfig = useSystemConfigStore((state) => state.config.currency)
   const { meta: currency } = getCurrencyDisplay()
   const quotaUnit = currency.kind === 'tokens' ? t('Tokens') : currency.symbol
-  return [
-    {
-      id: 'select',
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          indeterminate={table.getIsSomePageRowsSelected()}
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label={t('Select all')}
-          className='translate-y-[2px]'
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          disabled={!row.getCanSelect()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label={t('Select row')}
-          className='translate-y-[2px]'
-        />
-      ),
-      enableSorting: false,
-      enableHiding: false,
-      size: 40,
-    },
-    {
-      accessorKey: 'id',
-      header: t('ID'),
-      cell: ({ row }) => {
-        return (
-          <TableId
-            value={row.getValue('id') as number}
-            className='w-[60px] [font-family:inherit] text-sm'
+  return useMemo<ColumnDef<User>[]>(
+    () => [
+      {
+        id: 'select',
+        header: ({ table }) => (
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            indeterminate={table.getIsSomePageRowsSelected()}
+            onCheckedChange={(value) =>
+              table.toggleAllPageRowsSelected(!!value)
+            }
+            aria-label={t('Select all')}
+            className='translate-y-[2px]'
           />
         ),
         cell: ({ row }) => (
@@ -160,28 +140,12 @@ export function useUsersColumns(): ColumnDef<User>[] {
         size: 220,
         meta: { mobileTitle: true },
       },
-      enableHiding: false,
-      size: 220,
-      meta: { mobileTitle: true },
-    },
-    {
-      accessorKey: 'email',
-      header: t('Email'),
-      cell: ({ row }) => (
-        <LongText className='max-w-[240px] text-sm'>
-          {row.original.email || '—'}
-        </LongText>
-      ),
-      enableSorting: false,
-      size: 240,
-      meta: { mobileOrder: 25 },
-    },
-    {
-      accessorKey: 'status',
-      header: t('Status'),
-      cell: ({ row }) => {
-        const user = row.original
-        const requestCount = user.request_count
+      {
+        accessorKey: 'status',
+        header: t('Status'),
+        cell: ({ row }) => {
+          const user = row.original
+          const requestCount = user.request_count
 
           const statusConfig = isUserDeleted(user)
             ? USER_STATUSES[USER_STATUS.DELETED]
@@ -271,43 +235,65 @@ export function useUsersColumns(): ColumnDef<User>[] {
         size: 120,
         meta: { mobileOrder: 20 },
       },
-      enableSorting: false,
-      size: 120,
-      meta: { mobileOrder: 20 },
-    },
-    {
-      id: 'invite_info',
-      header: '邀请信息',
-      cell: ({ row }) => {
-        const user = row.original
-        const affCount = user.aff_count || 0
-        const affHistoryQuota = user.aff_history_quota || 0
-        const inviterId = user.inviter_id || 0
+      {
+        id: 'invite_info',
+        header: t('Invite Info'),
+        cell: ({ row }) => {
+          const user = row.original
+          const affCount = user.aff_count || 0
+          const affHistoryQuota = user.aff_history_quota || 0
+          const inviterId = user.inviter_id || 0
 
           if (affCount === 0 && affHistoryQuota === 0 && inviterId === 0) {
             return <span className='text-muted-foreground text-sm'>—</span>
           }
 
-        return (
-          <div
-            data-table-text='secondary'
-            className='min-w-0 space-y-1 text-xs font-normal'
-          >
-            {(affCount > 0 || affHistoryQuota !== 0) && (
-              <LongText>
-                邀请 {affCount} 人 · 收益：{' '}
-                <span className='tabular-nums'>
-                  {formatQuota(affHistoryQuota)}
-                </span>
-              </LongText>
-            )}
-            {inviterId > 0 && (
-              <LongText className='text-muted-foreground'>
-                邀请人 ID：{inviterId}
-              </LongText>
-            )}
-          </div>
-        )
+          return (
+            <div
+              data-table-text='secondary'
+              className='min-w-0 space-y-1 text-xs font-normal'
+            >
+              {(affCount > 0 || affHistoryQuota !== 0) && (
+                <LongText>
+                  {t('Invited {{count}} users', { count: affCount })} ·{' '}
+                  {t('Earnings')}:{' '}
+                  <span className='tabular-nums'>
+                    {formatQuota(affHistoryQuota)}
+                  </span>
+                </LongText>
+              )}
+              {inviterId > 0 && (
+                <LongText className='text-muted-foreground'>
+                  {t('Inviter')} ID: {inviterId}
+                </LongText>
+              )}
+            </div>
+          )
+        },
+        size: 240,
+        enableSorting: false,
+        meta: { mobileHidden: true },
+      },
+      {
+        accessorKey: 'created_at',
+        header: t('Time'),
+        cell: ({ row }) => (
+          <ActivityTimeCell
+            createdAt={row.original.created_at ?? 0}
+            lastAt={row.original.last_login_at ?? 0}
+            lastLabel={t('Last Login')}
+            format='absolute'
+          />
+        ),
+        size: 260,
+        minSize: 240,
+        meta: { mobileHidden: true },
+      },
+      {
+        id: 'actions',
+        header: () => t('Actions'),
+        cell: ({ row }) => <DataTableRowActions row={row} />,
+        meta: { pinned: 'right' as const },
       },
     ],
     // formatQuota reads the currency configuration from the store.

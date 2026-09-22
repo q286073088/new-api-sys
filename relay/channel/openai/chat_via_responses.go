@@ -51,9 +51,6 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
 	}
 
-	if err := service.ValidateTextUsage(c, info, usage); err != nil {
-		return nil, err
-	}
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 	return usage, nil
 }
@@ -146,9 +143,6 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
 	}
 
-	if err := service.ValidateTextUsage(c, info, usage); err != nil {
-		return nil, err
-	}
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 	return usage, nil
 }
@@ -312,9 +306,6 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 
 	if info.RelayFormat == types.RelayFormatClaude && info.ClaudeConvertInfo != nil {
 		info.ClaudeConvertInfo.Usage = usage
-	}
-	if err := service.ValidateTextUsage(c, info, usage); err != nil {
-		return nil, err
 	}
 	finalResults, err := service.FinalizeStreamResponse(c, info, state)
 	if err != nil {

@@ -19,10 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 /**
  * Type definitions for usage logs
  */
-import type { RequestRuleTrace } from '@/features/pricing/lib/billing-expr'
-import type { PolicyEvent } from '@/features/system-settings/request-policies/api'
+import type { RequestRuleTrace } from "@/features/pricing/lib/billing-expr";
+import type { PolicyEvent } from "@/features/system-settings/request-policies/api";
 
-import type { UsageLog } from './data/schema'
+import type { UsageLog } from "./data/schema";
 // ============================================================================
 // Log Category Types
 // ============================================================================
@@ -30,7 +30,7 @@ import type { UsageLog } from './data/schema'
 /**
  * Log category for different log types
  */
-export type LogCategory = 'common' | 'drawing' | 'task'
+export type LogCategory = "common" | "drawing" | "task";
 
 // ============================================================================
 // Filter Types
@@ -40,41 +40,41 @@ export type LogCategory = 'common' | 'drawing' | 'task'
  * Common filters (shared across all log types)
  */
 export interface CommonFilters {
-  startTime?: Date
-  endTime?: Date
-  channel?: string
+  startTime?: Date;
+  endTime?: Date;
+  channel?: string;
 }
 
 /**
  * Common logs specific filters
  */
 export interface CommonLogFilters extends CommonFilters {
-  model?: string
-  token?: string
-  group?: string
-  username?: string
-  requestId?: string
-  upstreamRequestId?: string
+  model?: string;
+  token?: string;
+  group?: string;
+  username?: string;
+  requestId?: string;
+  upstreamRequestId?: string;
 }
 
 /**
  * Drawing logs specific filters
  */
 export interface DrawingLogFilters extends CommonFilters {
-  mjId?: string
+  mjId?: string;
 }
 
 /**
  * Task logs specific filters
  */
 export interface TaskLogFilters extends CommonFilters {
-  taskId?: string
+  taskId?: string;
 }
 
 /**
  * Union type for all log filters
  */
-export type LogFilters = CommonLogFilters | DrawingLogFilters | TaskLogFilters
+export type LogFilters = CommonLogFilters | DrawingLogFilters | TaskLogFilters;
 
 // ============================================================================
 // Common Logs Additional Types
@@ -84,293 +84,293 @@ export type LogFilters = CommonLogFilters | DrawingLogFilters | TaskLogFilters
  * Parsed data from the 'other' field in usage logs
  */
 export interface ChannelAffinityInfo {
-  rule_name?: string
-  selected_group?: string
-  key_source?: string
-  key_path?: string
-  key_key?: string
-  key_hint?: string
-  key_fp?: string
-  using_group?: string
+  rule_name?: string;
+  selected_group?: string;
+  key_source?: string;
+  key_path?: string;
+  key_key?: string;
+  key_hint?: string;
+  key_fp?: string;
+  using_group?: string;
 }
 
 export const USAGE_BILLING_PATH = {
-  LOCAL: 'local',
-  UPSTREAM: 'upstream',
-  OPENAI: 'billing-usage-openai',
-  OPENAI_ESTIMATED: 'billing-usage-openai-estimated',
-  ANTHROPIC: 'billing-usage-anthropic',
-  ANTHROPIC_ESTIMATED: 'billing-usage-anthropic-estimated',
-  GEMINI: 'billing-usage-gemini',
-  GEMINI_ESTIMATED: 'billing-usage-gemini-estimated',
-} as const
+  LOCAL: "local",
+  UPSTREAM: "upstream",
+  OPENAI: "billing-usage-openai",
+  OPENAI_ESTIMATED: "billing-usage-openai-estimated",
+  ANTHROPIC: "billing-usage-anthropic",
+  ANTHROPIC_ESTIMATED: "billing-usage-anthropic-estimated",
+  GEMINI: "billing-usage-gemini",
+  GEMINI_ESTIMATED: "billing-usage-gemini-estimated",
+} as const;
 
 export type UsageBillingPath =
-  (typeof USAGE_BILLING_PATH)[keyof typeof USAGE_BILLING_PATH]
-
-export interface ToolSurchargeItem {
-  name: string
-  count: number
-  price: number
-}
+  (typeof USAGE_BILLING_PATH)[keyof typeof USAGE_BILLING_PATH];
 
 export interface RequestDiagnostics {
-  client_gone_at?: string
-  upstream_drain_started_at?: string
-  upstream_drain_ended_at?: string
-  upstream_drain_timed_out?: boolean
-  drained_after_client_gone?: boolean
+  client_gone_at?: string;
+  upstream_drain_started_at?: string;
+  upstream_drain_ended_at?: string;
+  upstream_drain_timed_out?: boolean;
+  drained_after_client_gone?: boolean;
   downstream_keepalive?: {
-    written_count: number
-    first_written_at: string
-    last_written_at: string
-  }
+    written_count: number;
+    first_written_at: string;
+    last_written_at: string;
+  };
 
-  timezone?: string
-  gateway_received_at?: string
-  gateway_elapsed_ms?: number
-  before_relay_elapsed_ms?: number
+  timezone?: string;
+  gateway_received_at?: string;
+  gateway_elapsed_ms?: number;
+  before_relay_elapsed_ms?: number;
   request_phases?: {
-    name: string
-    at: string
-    elapsed_ms: number
-    since_previous_ms: number
-  }[]
-  request_phases_truncated?: boolean
-  upstream_scanned_lines?: number
-  upstream_comment_lines?: number
-  upstream_blank_lines?: number
-  upstream_other_lines?: number
+    name: string;
+    at: string;
+    elapsed_ms: number;
+    since_previous_ms: number;
+  }[];
+  request_phases_truncated?: boolean;
+  upstream_scanned_lines?: number;
+  upstream_comment_lines?: number;
+  upstream_blank_lines?: number;
+  upstream_other_lines?: number;
 
-  diagnostics_version?: number
-  gateway_request_id?: string
-  gateway_version?: string
-  request_path?: string
-  request_started_at?: string
-  recorded_at?: string
-  stream_started_at?: string
-  stream_ended_at?: string
-  last_upstream_data_at?: string
-  upstream_body_closed_at?: string
-  scanner_error_at?: string
-  scanner_error_after_cleanup?: boolean
-  usage_event_seen?: boolean
-  terminal_event_seen?: boolean
-  missing_billable_usage?: boolean
-  recent_upstream_events?: { at: string; type: string; bytes: number }[]
+  diagnostics_version?: number;
+  gateway_request_id?: string;
+  gateway_version?: string;
+  request_path?: string;
+  request_started_at?: string;
+  recorded_at?: string;
+  stream_started_at?: string;
+  stream_ended_at?: string;
+  last_upstream_data_at?: string;
+  upstream_body_closed_at?: string;
+  scanner_error_at?: string;
+  scanner_error_after_cleanup?: boolean;
+  usage_event_seen?: boolean;
+  terminal_event_seen?: boolean;
+  missing_billable_usage?: boolean;
+  recent_upstream_events?: { at: string; type: string; bytes: number }[];
 
-  request_host?: string
-  cloudflare_ray?: string
-  client_context_cause?: string
-  downstream_headers_written?: boolean
-  downstream_read_error?: string
-  downstream_read_error_kind?: string
-  downstream_read_error_at?: string
-  downstream_write_error?: string
-  downstream_write_error_kind?: string
-  downstream_write_error_at?: string
-  downstream_write_deadline?: string
-  gateway_connection_closed_at?: string
-  node_name?: string
-  attempt_number?: number
-  client_user_agent?: string
-  client_protocol?: string
-  client_context_error?: string
-  client_deadline?: string
-  request_body_bytes?: number
-  estimated_input_tokens?: number
-  request_elapsed_ms?: number
-  downstream_status?: number
-  downstream_written_bytes?: number
-  upstream_host?: string
-  upstream_status?: number
-  upstream_protocol?: string
-  upstream_request_id?: string
-  upstream_error_kind?: string
-  upstream_error?: string
-  upstream_read_error?: string
-  headers_elapsed_ms?: number
-  stream_elapsed_ms?: number
-  first_event_elapsed_ms?: number
-  last_upstream_activity_ms?: number
-  received_events?: number
-  relay_timeout_seconds?: number
-  stream_idle_timeout_seconds?: number
-  client_write_timeout_seconds?: number
-  ping_enabled?: boolean
-  ping_interval_seconds?: number
+  request_host?: string;
+  cloudflare_ray?: string;
+  client_context_cause?: string;
+  downstream_headers_written?: boolean;
+  downstream_read_error?: string;
+  downstream_read_error_kind?: string;
+  downstream_read_error_at?: string;
+  downstream_write_error?: string;
+  downstream_write_error_kind?: string;
+  downstream_write_error_at?: string;
+  downstream_write_deadline?: string;
+  gateway_connection_closed_at?: string;
+  node_name?: string;
+  attempt_number?: number;
+  client_user_agent?: string;
+  client_protocol?: string;
+  client_context_error?: string;
+  client_deadline?: string;
+  request_body_bytes?: number;
+  estimated_input_tokens?: number;
+  request_elapsed_ms?: number;
+  downstream_status?: number;
+  downstream_written_bytes?: number;
+  upstream_host?: string;
+  upstream_status?: number;
+  upstream_protocol?: string;
+  upstream_request_id?: string;
+  upstream_error_kind?: string;
+  upstream_error?: string;
+  upstream_read_error?: string;
+  headers_elapsed_ms?: number;
+  stream_elapsed_ms?: number;
+  first_event_elapsed_ms?: number;
+  last_upstream_activity_ms?: number;
+  received_events?: number;
+  relay_timeout_seconds?: number;
+  stream_idle_timeout_seconds?: number;
+  client_write_timeout_seconds?: number;
+  ping_enabled?: boolean;
+  ping_interval_seconds?: number;
+}
+export interface ToolSurchargeItem {
+  name: string;
+  count: number;
+  price: number;
 }
 
 export interface LogOtherData {
   admin_info?: {
-    request_diagnostics?: RequestDiagnostics
+    request_policy?: PolicyEvent[];
+    request_diagnostics?: RequestDiagnostics;
     channel_test?: {
-      prompt: string
-      output: string
-      output_truncated?: boolean
-    }
-    is_multi_key?: boolean
-    multi_key_index?: number
-    use_channel?: number[]
-    local_count_tokens?: boolean
-    usage_billing_path?: UsageBillingPath | string
-    channel_affinity?: ChannelAffinityInfo
+      prompt: string;
+      output: string;
+      output_truncated?: boolean;
+    };
+    is_multi_key?: boolean;
+    multi_key_index?: number;
+    use_channel?: number[];
+    local_count_tokens?: boolean;
+    usage_billing_path?: UsageBillingPath | string;
+    channel_affinity?: ChannelAffinityInfo;
     // Top-up audit fields (type=1, admin only)
-    payment_method?: string
-    callback_payment_method?: string
-    caller_ip?: string
-    server_ip?: string
-    version?: string
-    node_name?: string
+    payment_method?: string;
+    callback_payment_method?: string;
+    caller_ip?: string;
+    server_ip?: string;
+    version?: string;
+    node_name?: string;
     // Operator identity for audit logs (type=3, admin only)
-    admin_username?: string
-    admin_id?: number | string
-    admin_role?: number
-    auth_method?: 'session' | 'access_token' | string
+    admin_username?: string;
+    admin_id?: number | string;
+    admin_role?: number;
+    auth_method?: "session" | "access_token" | string;
     // Quota saturation marker: set when a quota conversion clamped at the
     // supported single-request bound (overflow/underflow) or hit a NaN fallback while computing
     // this request's charge. Admin-only (nested under admin_info).
     quota_saturation?: {
-      op: string
-      kind: 'overflow' | 'underflow' | 'nan'
-      original: number
-      clamped: number
-    }
+      op: string;
+      kind: "overflow" | "underflow" | "nan";
+      original: number;
+      clamped: number;
+    };
     // Reject / intercept reason (admin only)
-    reject_reason?: string
-    task_plugin?: TaskPluginInfo
-  }
+    reject_reason?: string;
+    task_plugin?: TaskPluginInfo;
+  };
   root_info?: {
-    task_plugin?: TaskPluginRuntimeInfo
-    upstream_task_id?: string
-    node_name?: string
-  }
+    task_plugin?: TaskPluginRuntimeInfo;
+    upstream_task_id?: string;
+    node_name?: string;
+  };
   // Language-independent operation descriptor (audit/login logs).
   // Frontend renders localized content from action + params via i18n templates.
   op?: {
-    action?: string
-    params?: Record<string, string | number | boolean | string[]>
-  }
+    action?: string;
+    params?: Record<string, string | number | boolean | string[]>;
+  };
   // Operation audit details written by the admin-audit fallback in authHelper (type=3, admin only)
   audit_info?: {
-    method?: string
-    route?: string
-    path?: string
-    status?: number
-    success?: boolean
-    params?: Record<string, string>
-  }
+    method?: string;
+    route?: string;
+    path?: string;
+    status?: number;
+    success?: boolean;
+    params?: Record<string, string>;
+  };
   // Login audit fields (type=7); visible to the log owner
-  login_method?: string
-  user_agent?: string
-  request_path?: string
-  request_conversion?: string[]
-  ws?: boolean
-  audio?: boolean
-  audio_input?: number
-  audio_output?: number
-  text_input?: number
-  text_output?: number
-  cache_tokens?: number
-  image_cache_tokens?: number
-  billing_tokens?: Record<string, number>
-  cache_creation_tokens?: number
-  cache_creation_tokens_5m?: number
-  cache_creation_tokens_1h?: number
-  claude?: boolean
-  model_ratio?: number
-  completion_ratio?: number
-  model_price?: number
-  group_ratio?: number
-  user_group_ratio?: number
-  cache_ratio?: number
-  cache_creation_ratio?: number
-  cache_creation_ratio_5m?: number
-  cache_creation_ratio_1h?: number
-  is_model_mapped?: boolean
-  upstream_model_name?: string
+  login_method?: string;
+  user_agent?: string;
+  request_path?: string;
+  request_conversion?: string[];
+  ws?: boolean;
+  audio?: boolean;
+  audio_input?: number;
+  audio_output?: number;
+  text_input?: number;
+  text_output?: number;
+  cache_tokens?: number;
+  image_cache_tokens?: number;
+  billing_tokens?: Record<string, number>;
+  cache_creation_tokens?: number;
+  cache_creation_tokens_5m?: number;
+  cache_creation_tokens_1h?: number;
+  claude?: boolean;
+  model_ratio?: number;
+  completion_ratio?: number;
+  model_price?: number;
+  group_ratio?: number;
+  user_group_ratio?: number;
+  cache_ratio?: number;
+  cache_creation_ratio?: number;
+  cache_creation_ratio_5m?: number;
+  cache_creation_ratio_1h?: number;
+  is_model_mapped?: boolean;
+  upstream_model_name?: string;
   // Diagnostic only. Whether the names disagree is derived in the UI via
   // isResponseModelMismatch so old rows follow the current comparison rule.
   response_model?: {
-    requested_model: string
-    upstream_model: string
-    returned_model: string
-  }
-  audio_ratio?: number
-  audio_completion_ratio?: number
-  frt?: number
+    requested_model: string;
+    upstream_model: string;
+    returned_model: string;
+  };
+  audio_ratio?: number;
+  audio_completion_ratio?: number;
+  frt?: number;
   // Tiered (expression-based) billing fields, set by backend when
   // billing_mode === 'tiered_expr'. expr_b64 is the base64-encoded billing
   // expression; the matched tier and request-rule traces come from the actual
   // settlement run.
-  billing_mode?: string
-  billing_unit?: 'token' | 'request'
-  fixed_price?: number
-  image_count?: number
-  expr_b64?: string
-  matched_tier?: string
-  request_rules?: RequestRuleTrace[]
-  usage_facts?: Record<string, string | number>
-  reasoning_effort?: string
-  image?: boolean
-  image_ratio?: number
-  image_output?: number
-  web_search?: boolean
-  web_search_call_count?: number
-  web_search_price?: number
-  file_search?: boolean
-  file_search_call_count?: number
-  file_search_price?: number
-  tool_surcharges?: ToolSurchargeItem[]
-  audio_input_seperate_price?: boolean
-  audio_input_token_count?: number
-  audio_input_price?: number
-  image_generation_call?: boolean
-  image_generation_call_price?: number
-  image_generation_call_count?: number
-  is_system_prompt_overwritten?: boolean
-  po?: string[]
-  billing_source?: string
-  group?: string
+  billing_mode?: string;
+  billing_unit?: "token" | "request";
+  fixed_price?: number;
+  image_count?: number;
+  expr_b64?: string;
+  matched_tier?: string;
+  request_rules?: RequestRuleTrace[];
+  usage_facts?: Record<string, string | number>;
+  reasoning_effort?: string;
+  image?: boolean;
+  image_ratio?: number;
+  image_output?: number;
+  web_search?: boolean;
+  web_search_call_count?: number;
+  web_search_price?: number;
+  file_search?: boolean;
+  file_search_call_count?: number;
+  file_search_price?: number;
+  tool_surcharges?: ToolSurchargeItem[];
+  audio_input_seperate_price?: boolean;
+  audio_input_token_count?: number;
+  audio_input_price?: number;
+  image_generation_call?: boolean;
+  image_generation_call_price?: number;
+  image_generation_call_count?: number;
+  is_system_prompt_overwritten?: boolean;
+  po?: string[];
+  billing_source?: string;
+  group?: string;
   stream_status?: {
-    status?: string
-    end_reason?: string
-    error_count?: number
-    end_error?: string
-    errors?: string[]
-  }
+    status?: string;
+    end_reason?: string;
+    error_count?: number;
+    end_error?: string;
+    errors?: string[];
+  };
   // Violation fee fields
-  violation_fee?: boolean
-  violation_fee_code?: string
-  violation_fee_marker?: string
-  fee_quota?: number
+  violation_fee?: boolean;
+  violation_fee_code?: string;
+  violation_fee_marker?: string;
+  fee_quota?: number;
   // Task-related fields (for refund logs, type=6)
-  is_task?: boolean
+  is_task?: boolean;
   // The submitting request returned the task result itself (an immediate
   // result, or an OpenAI Images request the gateway waited on).
-  task_sync?: boolean
+  task_sync?: boolean;
   // The inline result was not persisted, so no artifact can be retrieved.
-  result_discarded?: boolean
-  task_id?: string
-  reason?: string
+  result_discarded?: boolean;
+  task_id?: string;
+  reason?: string;
   // Subscription billing fields
-  subscription_plan_id?: string
-  subscription_plan_title?: string
-  subscription_id?: string
-  subscription_pre_consumed?: number
-  subscription_post_delta?: number
-  subscription_consumed?: number
-  subscription_remain?: number
-  subscription_total?: number
+  subscription_plan_id?: string;
+  subscription_plan_title?: string;
+  subscription_id?: string;
+  subscription_pre_consumed?: number;
+  subscription_post_delta?: number;
+  subscription_consumed?: number;
+  subscription_remain?: number;
+  subscription_total?: number;
 }
 
 /**
  * Log statistics data
  */
 export interface LogStatistics {
-  quota: number
-  rpm: number
-  tpm: number
+  quota: number;
+  rpm: number;
+  tpm: number;
 }
 
 // ============================================================================
@@ -378,27 +378,27 @@ export interface LogStatistics {
 // ============================================================================
 
 export interface MidjourneyLog {
-  id: number
-  user_id: number
-  channel_id: number
-  code: number
-  mj_id: string
-  action: string // IMAGINE, UPSCALE, VARIATION, etc. (backend field name)
-  submit_time: number // milliseconds
-  finish_time?: number // milliseconds
-  start_time?: number // milliseconds
-  fail_reason?: string
-  progress: string
-  prompt: string
-  prompt_en?: string
-  description?: string
-  buttons?: string
-  properties?: string
-  image_url?: string
-  status: string // NOT_START, SUBMITTED, IN_PROGRESS, SUCCESS, FAILURE, MODAL
-  other?: string
-  created_at?: number
-  updated_at?: number
+  id: number;
+  user_id: number;
+  channel_id: number;
+  code: number;
+  mj_id: string;
+  action: string; // IMAGINE, UPSCALE, VARIATION, etc. (backend field name)
+  submit_time: number; // milliseconds
+  finish_time?: number; // milliseconds
+  start_time?: number; // milliseconds
+  fail_reason?: string;
+  progress: string;
+  prompt: string;
+  prompt_en?: string;
+  description?: string;
+  buttons?: string;
+  properties?: string;
+  image_url?: string;
+  status: string; // NOT_START, SUBMITTED, IN_PROGRESS, SUCCESS, FAILURE, MODAL
+  other?: string;
+  created_at?: number;
+  updated_at?: number;
 }
 
 // ============================================================================
@@ -406,104 +406,104 @@ export interface MidjourneyLog {
 // ============================================================================
 
 export interface TaskLog {
-  id: number
-  user_id: number
-  username?: string
-  platform: string // suno, kling, runway, etc.
-  task_id: string
-  action: string // MUSIC, LYRICS, GENERATE, TEXT_GENERATE, etc.
-  channel_id: number
-  group: string
-  quota: number
-  submit_time: number // seconds
-  start_time?: number // seconds
-  finish_time?: number // seconds
-  progress?: string
-  progress_message_en?: string
-  data?: unknown
+  id: number;
+  user_id: number;
+  username?: string;
+  platform: string; // suno, kling, runway, etc.
+  task_id: string;
+  action: string; // MUSIC, LYRICS, GENERATE, TEXT_GENERATE, etc.
+  channel_id: number;
+  group: string;
+  quota: number;
+  submit_time: number; // seconds
+  start_time?: number; // seconds
+  finish_time?: number; // seconds
+  progress?: string;
+  progress_message_en?: string;
+  data?: unknown;
   properties?: {
-    input?: string
-    upstream_model_name?: string
-    origin_model_name?: string
-  }
-  legacy_video_available?: boolean
+    input?: string;
+    upstream_model_name?: string;
+    origin_model_name?: string;
+  };
+  legacy_video_available?: boolean;
   // A synchronous result returned inline and never persisted; artifact
   // retrieval is not offered for it.
-  result_discarded?: boolean
-  fail_reason?: string
-  status: string // NOT_START, SUBMITTED, IN_PROGRESS, SUCCESS, FAILURE, QUEUED, UNKNOWN
+  result_discarded?: boolean;
+  fail_reason?: string;
+  status: string; // NOT_START, SUBMITTED, IN_PROGRESS, SUCCESS, FAILURE, QUEUED, UNKNOWN
   admin_info?: {
-    request_id?: string
-    request_path?: string
-    task_plugin?: TaskPluginInfo
-  }
+    request_id?: string;
+    request_path?: string;
+    task_plugin?: TaskPluginInfo;
+  };
   root_info?: {
-    task_plugin?: TaskPluginRuntimeInfo
-    upstream_task_id?: string
-    node_name?: string
-  }
-  created_at?: number
-  updated_at?: number
+    task_plugin?: TaskPluginRuntimeInfo;
+    upstream_task_id?: string;
+    node_name?: string;
+  };
+  created_at?: number;
+  updated_at?: number;
 }
 
 export interface TaskPluginInfo {
-  key: string
-  name: string
-  version?: string
-  author?: TaskPluginAuthor
+  key: string;
+  name: string;
+  version?: string;
+  author?: TaskPluginAuthor;
 }
 
 export interface TaskPluginAuthor {
-  name: string
-  url?: string
+  name: string;
+  url?: string;
 }
 
 export interface TaskPluginRuntimeInfo {
-  key: string
-  version: string
-  api_version: number
-  generation: number
+  key: string;
+  version: string;
+  api_version: number;
+  generation: number;
 }
 
-export type TaskArtifactType = 'image' | 'video' | 'audio' | 'file'
+export type TaskArtifactType = "image" | "video" | "audio" | "file";
 
 export interface TaskArtifact {
-  key: string
-  type: TaskArtifactType
-  mime_type?: string
-  content_url: string
+  key: string;
+  type: TaskArtifactType;
+  mime_type?: string;
+  content_url: string;
 }
 
 export interface AudioClip {
-  clip_id?: string
-  id?: string
-  title?: string
-  tags?: string
-  duration?: number
-  audio_url?: string
-  image_url?: string
-  image_large_url?: string
+  clip_id?: string;
+  id?: string;
+  title?: string;
+  tags?: string;
+  duration?: number;
+  audio_url?: string;
+  image_url?: string;
+  image_large_url?: string;
   metadata?: {
-    tags?: string
-    duration?: number
-  }
+    tags?: string;
+    duration?: number;
+  };
 }
 
 export interface TaskArtifactProjection {
-  artifacts: TaskArtifact[]
-  legacyContentUrl?: string
-  legacyAudioClips?: AudioClip[]
+  artifacts: TaskArtifact[];
+  legacyContentUrl?: string;
+  legacyAudioClips?: AudioClip[];
 }
 
 export interface TaskArtifactsResponse {
-  success: boolean
-  message?: string
-  code?: string
+  success: boolean;
+  message?: string;
+  code?: string;
   data?: {
-    artifacts?: unknown
-    legacy_content_url?: unknown
-    legacy_audio_clips?: unknown
-  }
+    artifacts?: unknown;
+    legacy_content_url?: unknown;
+    legacy_audio_clips?: unknown;
+  };
 }
 
 // ============================================================================
@@ -511,48 +511,48 @@ export interface TaskArtifactsResponse {
 // ============================================================================
 
 export interface GetLogsParams {
-  p?: number
-  page_size?: number
-  type?: number
-  username?: string
-  token_name?: string
-  model_name?: string
-  start_timestamp?: number
-  end_timestamp?: number
-  channel?: number
-  group?: string
-  request_id?: string
-  upstream_request_id?: string
+  p?: number;
+  page_size?: number;
+  type?: number;
+  username?: string;
+  token_name?: string;
+  model_name?: string;
+  start_timestamp?: number;
+  end_timestamp?: number;
+  channel?: number;
+  group?: string;
+  request_id?: string;
+  upstream_request_id?: string;
 }
 
 export interface GetLogsResponse {
-  success: boolean
-  message?: string
+  success: boolean;
+  message?: string;
   data?: {
-    items: UsageLog[] | MidjourneyLog[] | TaskLog[]
-    total: number
-    page: number
-    page_size: number
-  }
+    items: UsageLog[] | MidjourneyLog[] | TaskLog[];
+    total: number;
+    page: number;
+    page_size: number;
+  };
 }
 
 export interface GetLogStatsParams {
-  type?: number
-  username?: string
-  token_name?: string
-  model_name?: string
-  start_timestamp?: number
-  end_timestamp?: number
-  channel?: number
-  group?: string
-  request_id?: string
-  upstream_request_id?: string
+  type?: number;
+  username?: string;
+  token_name?: string;
+  model_name?: string;
+  start_timestamp?: number;
+  end_timestamp?: number;
+  channel?: number;
+  group?: string;
+  request_id?: string;
+  upstream_request_id?: string;
 }
 
 export interface GetLogStatsResponse {
-  success: boolean
-  message?: string
-  data?: LogStatistics
+  success: boolean;
+  message?: string;
+  data?: LogStatistics;
 }
 
 // ============================================================================
@@ -560,12 +560,12 @@ export interface GetLogStatsResponse {
 // ============================================================================
 
 export interface GetMidjourneyLogsParams {
-  p?: number
-  page_size?: number
-  channel_id?: string
-  mj_id?: string
-  start_timestamp?: number
-  end_timestamp?: number
+  p?: number;
+  page_size?: number;
+  channel_id?: string;
+  mj_id?: string;
+  start_timestamp?: number;
+  end_timestamp?: number;
 }
 
 // ============================================================================
@@ -573,12 +573,12 @@ export interface GetMidjourneyLogsParams {
 // ============================================================================
 
 export interface GetTaskLogsParams {
-  p?: number
-  page_size?: number
-  channel_id?: string
-  task_id?: string
-  start_timestamp?: number
-  end_timestamp?: number
+  p?: number;
+  page_size?: number;
+  channel_id?: string;
+  task_id?: string;
+  start_timestamp?: number;
+  end_timestamp?: number;
 }
 
 // ============================================================================
@@ -589,12 +589,12 @@ export interface GetTaskLogsParams {
  * Configuration for fetching logs by category
  */
 export interface FetchLogsConfig {
-  logCategory: LogCategory
-  isAdmin: boolean
-  page: number
-  pageSize: number
-  searchParams: Record<string, unknown>
-  columnFilters: Array<{ id: string; value: unknown }>
+  logCategory: LogCategory;
+  isAdmin: boolean;
+  page: number;
+  pageSize: number;
+  searchParams: Record<string, unknown>;
+  columnFilters: Array<{ id: string; value: unknown }>;
 }
 
 // ============================================================================
@@ -602,15 +602,15 @@ export interface FetchLogsConfig {
 // ============================================================================
 
 export interface UserInfo {
-  id: number
-  username: string
-  display_name?: string
-  quota: number
-  used_quota: number
-  request_count: number
-  group?: string
-  aff_code?: string
-  aff_count?: number
-  aff_quota?: number
-  remark?: string
+  id: number;
+  username: string;
+  display_name?: string;
+  quota: number;
+  used_quota: number;
+  request_count: number;
+  group?: string;
+  aff_code?: string;
+  aff_count?: number;
+  aff_quota?: number;
+  remark?: string;
 }
