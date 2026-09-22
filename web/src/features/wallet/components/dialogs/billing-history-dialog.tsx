@@ -103,7 +103,7 @@ export function BillingHistoryDialog({
         description={t(
           'View your topup transaction records and payment history'
         )}
-        contentClassName='flex max-h-[calc(100dvh-2rem)] flex-col max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:max-w-4xl'
+        contentClassName='flex max-h-(--dialog-available-height) flex-col max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:max-w-4xl'
         contentHeight='auto'
         bodyClassName='space-y-3'
       >
@@ -159,15 +159,9 @@ export function BillingHistoryDialog({
                         <Skeleton className='h-4 w-48' />
                         <Skeleton className='h-3 w-32' />
                       </div>
-                      <Skeleton className='h-5 w-16' />
                     </div>
-                    <div className='mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4'>
-                      <Skeleton className='h-3 w-full' />
-                      <Skeleton className='h-3 w-full' />
-                      <Skeleton className='h-3 w-full' />
-                    </div>
-                  </div>
-                ))}
+                  )
+                )}
               </div>
             )}
             {!loading && records.length === 0 && (
