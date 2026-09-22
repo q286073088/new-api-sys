@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { QualityTestSettings } from '@/features/quality-tests'
+
 import { IoNetDeploymentSettingsSection } from "../integrations/ionet-deployment-settings-section";
 import type { ModelSettings } from "../types";
 import { createSectionRegistry } from "../utils/section-registry";
@@ -36,6 +38,11 @@ function formatJsonForEditor(value: string, fallback: string) {
 }
 
 const MODELS_SECTIONS = [
+  {
+    id: "quality-tests",
+    titleKey: "Model quality tests",
+    build: () => <QualityTestSettings />,
+  },
   {
     id: "global",
     titleKey: "Global Model Configuration",

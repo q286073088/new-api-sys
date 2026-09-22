@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   Box,
+  BrainCircuit,
   ClipboardList,
   CreditCard,
   FileText,
@@ -83,7 +84,7 @@ export function useSidebarData(): SidebarData {
                 {
                   title: t('Model quality tests'),
                   url: '/quality-tests' as const,
-                  icon: Activity,
+                  icon: BrainCircuit,
                 },
               ]
             : []),
@@ -204,12 +205,6 @@ export function useSidebarData(): SidebarData {
             url: '/system-settings/site',
             activeUrls: ['/system-settings'],
             icon: Settings,
-          },
-          {
-            title: t('Business Report'),
-            url: '/dashboard/business',
-            icon: ClipboardList,
-            requiredRole: ROLE.ADMIN,
           },
         ],
       },

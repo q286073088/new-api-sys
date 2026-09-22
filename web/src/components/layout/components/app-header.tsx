@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ConfigDrawer } from '@/components/config-drawer'
+import { ConsoleAnnouncementDialog } from '@/components/console-announcement-dialog'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
@@ -112,7 +113,8 @@ export function AppHeader({
   const notifications = useNotifications()
 
   return (
-    <Header>
+    <>
+      <Header>
       <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-1'>
         <SystemBrand variant='inline' />
         <SystemUpdateAction presentation='version' />
@@ -149,6 +151,14 @@ export function AppHeader({
           {showProfileDropdown && <ProfileDropdown />}
         </div>
       )}
-    </Header>
+      </Header>
+      {showNotifications && (
+        <ConsoleAnnouncementDialog
+          notice={notifications.notice}
+          announcements={notifications.announcements}
+          loading={notifications.loading}
+        />
+      )}
+    </>
   )
 }
