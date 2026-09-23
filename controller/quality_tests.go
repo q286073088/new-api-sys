@@ -379,13 +379,14 @@ func QualitySummary(c *gin.Context) {
 		TestID    int64
 		Status    string
 		StartedAt int64
+		ID        int64
 	}
-	if err := timelineQuery.Select("test_id, status, started_at").Find(&points).Error; err != nil {
+	if err := timelineQuery.Select("test_id, status, started_at, id").Order("test_id, started_at, id").Find(&points).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	timeline := map[int64][]qualitySlot{}
-	priority := map[string]int{"": 0, "passed": 1, "running": 2, "pending": 3, "failed": 4}
+	latestInSlot := map[[2]int64]int64{}
 	for _, point := range points {
 		if timeline[point.TestID] == nil {
 			slots := make([]qualitySlot, timelineBucketCount)
@@ -396,10 +397,13 @@ func QualitySummary(c *gin.Context) {
 		}
 		i := (point.StartedAt - start) / timelineBucketSeconds
 		slot := &timeline[point.TestID][i]
-		slot.Count++
-		if priority[point.Status] > priority[slot.Status] {
+		key := [2]int64{point.TestID, slot.Start}
+		previousID, hasPrevious := latestInSlot[key]
+		if !hasPrevious || point.ID > previousID {
+			latestInSlot[key] = point.ID
 			slot.Status = point.Status
 		}
+		slot.Count++
 	}
 	common.ApiSuccess(c, gin.H{"counts": summary, "next_run_at": next.Next, "timeline": timeline, "timeline_start": start, "server_time": now})
 }

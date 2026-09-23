@@ -22,6 +22,7 @@ import {
   BrainCircuit,
   ClipboardList,
   CreditCard,
+  ReceiptText,
   FileText,
   FlaskConical,
   Key,
@@ -171,6 +172,12 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+          },
+          {
+            title: t('Order Details'),
+            url: '/topup-orders',
+            icon: ReceiptText,
+            requiredRole: ROLE.ADMIN,
           },
           {
             title: t('Invoice review'),
