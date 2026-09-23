@@ -235,6 +235,7 @@ export function RuleEditorDialog(props: Props) {
     const rule: AffinityRule = {
       ...props.rule,
       session_mode: values.session_mode || 'inherit',
+      skip_retry_on_failure: values.session_mode === 'strict',
       id: props.rule?.id,
       name: values.name.trim(),
       model_regex: modelRegex,
@@ -243,7 +244,6 @@ export function RuleEditorDialog(props: Props) {
       key_sources: validKeySources,
       value_regex: values.value_regex.trim(),
       ttl_seconds: Number(values.ttl_seconds || 0),
-      skip_retry_on_failure: values.skip_retry_on_failure,
       include_using_group: values.include_using_group,
       include_model_name: values.include_model_name,
       include_rule_name: values.include_rule_name,

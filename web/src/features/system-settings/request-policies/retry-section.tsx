@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useFormContext } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
+import { JsonEditor } from '@/components/json-editor'
 import {
   FormControl,
   FormDescription,
@@ -56,6 +57,32 @@ export function RetrySection() {
               </FormControl>
               <FormDescription>
                 {t('Excludes the first attempt. Counted per group.')}
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name='ModelRetryTimes'
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('Per-model retry limits')}</FormLabel>
+              <FormControl>
+                <JsonEditor
+                  value={field.value}
+                  onChange={field.onChange}
+                  valueType='any'
+                  keyLabel={t('Model name')}
+                  keyPlaceholder={t('Model name')}
+                  valueLabel={t('Retry Times')}
+                  valuePlaceholder={t('Retry Times')}
+                />
+              </FormControl>
+              <FormDescription>
+                {t(
+                  'Use the model name requested by the client. A model override limits retries across the entire request; 0 disables retries. Unlisted models keep the global and cross-group retry behavior.'
+                )}
               </FormDescription>
               <FormMessage />
             </FormItem>

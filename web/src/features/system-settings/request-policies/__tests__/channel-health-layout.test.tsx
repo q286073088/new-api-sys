@@ -49,6 +49,16 @@ function formItemOf(control: HTMLElement) {
 }
 
 describe('channel health layout', () => {
+  it('keeps model square failure exclusions beside the health controls', () => {
+    show()
+    expect(
+      screen.getByRole('switch', { name: 'Exclude selected failures' })
+    ).toBeVisible()
+    expect(
+      screen.getByRole('textbox', { name: 'Excluded status codes' })
+    ).toBeVisible()
+  })
+
   it('nests only the test mode and interval under the scheduled channel tests switch', () => {
     show()
     const options = screen.getByRole('group', {
@@ -58,6 +68,16 @@ describe('channel health layout', () => {
     expect(
       within(options).getByRole('spinbutton', {
         name: 'Test interval (minutes)',
+      })
+    ).toBeVisible()
+    expect(
+      within(options).getByRole('textbox', {
+        name: 'Channel test prompt',
+      })
+    ).toBeVisible()
+    expect(
+      within(options).getByRole('spinbutton', {
+        name: 'Test maximum output tokens',
       })
     ).toBeVisible()
     expect(

@@ -280,6 +280,13 @@ func UpdateOption(key string, value string) error {
 	if key == setting.ReferralSettingKey || key == "ModelRetryTimes" {
 		return UpdateOptionsBulk(map[string]string{key: value})
 	}
+	if IsRequestPolicyOption(key) {
+		return UpdateRequestPolicyOptions(map[string]string{key: value})
+	}
+	if IsPasskeyDomainOption(key) {
+		_, err := UpdatePasskeyDomainOptions(map[string]string{key: value}, false, "")
+		return err
+	}
 	if IsModelPricingOption(key) {
 		return UpdateModelPricingOptions(map[string]string{key: value})
 	}

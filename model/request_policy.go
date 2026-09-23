@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
 	"gorm.io/gorm"
 )
 
@@ -42,6 +43,7 @@ func requestPolicyDefaultOptions() map[string]string {
 	for prefix, value := range map[string]any{
 		"channel_affinity_setting.": operation_setting.GetChannelAffinitySetting(),
 		"monitor_setting.":          operation_setting.GetMonitorSetting(),
+		"perf_metrics_setting.":     perf_metrics_setting.GetSetting(),
 	} {
 		fields, err := config.ConfigToMap(value)
 		if err != nil {
@@ -52,6 +54,7 @@ func requestPolicyDefaultOptions() map[string]string {
 		}
 	}
 	defaults["RetryTimes"] = strconv.Itoa(common.RetryTimes)
+	defaults["ModelRetryTimes"] = operation_setting.ModelRetryTimesJSON()
 	defaults["AutomaticRetryStatusCodes"] = operation_setting.AutomaticRetryStatusCodesToString()
 	defaults["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
 	defaults["AutomaticDisableKeywords"] = operation_setting.AutomaticDisableKeywordsToString()
@@ -69,7 +72,7 @@ func IsRequestPolicyOption(key string) bool {
 		return true
 	}
 	switch key {
-	case "CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "SensitiveWords", "AutomaticEnableChannelEnabled", "ChannelDisableThreshold", "monitor_setting.auto_test_channel_enabled", "monitor_setting.auto_test_channel_minutes", "monitor_setting.channel_test_concurrency", "monitor_setting.channel_test_mode", "RetryTimes", "AutomaticRetryStatusCodes", "AutomaticDisableChannelEnabled", "AutomaticDisableStatusCodes", "AutomaticDisableKeywords":
+	case "CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "SensitiveWords", "AutomaticEnableChannelEnabled", "ChannelDisableThreshold", "monitor_setting.auto_test_channel_enabled", "monitor_setting.auto_test_channel_minutes", "monitor_setting.channel_test_concurrency", "monitor_setting.channel_test_mode", "monitor_setting.channel_test_prompt", "monitor_setting.channel_test_max_tokens", "perf_metrics_setting.exclude_errors_enabled", "perf_metrics_setting.excluded_status_codes", "RetryTimes", "ModelRetryTimes", "AutomaticRetryStatusCodes", "AutomaticDisableChannelEnabled", "AutomaticDisableStatusCodes", "AutomaticDisableKeywords":
 		return true
 	}
 	return false
@@ -155,6 +158,18 @@ func BuildRequestPolicy(options map[string]string) (*RequestPolicySnapshot, erro
 		}
 	}
 	if err := operation_setting.ValidateChannelTestConcurrency(raw["monitor_setting.channel_test_concurrency"]); err != nil {
+		return nil, err
+	}
+	if err := operation_setting.ValidateChannelTestPrompt(raw["monitor_setting.channel_test_prompt"]); err != nil {
+		return nil, err
+	}
+	if err := operation_setting.ValidateChannelTestMaxTokens(raw["monitor_setting.channel_test_max_tokens"]); err != nil {
+		return nil, err
+	}
+	if _, err := perf_metrics_setting.ParseExcludedStatusCodes(raw["perf_metrics_setting.excluded_status_codes"]); err != nil {
+		return nil, err
+	}
+	if _, err := operation_setting.ParseModelRetryTimes(raw["ModelRetryTimes"]); err != nil {
 		return nil, err
 	}
 	for _, key := range []string{"ChannelDisableThreshold", "monitor_setting.auto_test_channel_minutes"} {

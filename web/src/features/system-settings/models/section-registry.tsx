@@ -18,178 +18,141 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QualityTestSettings } from '@/features/quality-tests'
 
-import { IoNetDeploymentSettingsSection } from "../integrations/ionet-deployment-settings-section";
-import type { ModelSettings } from "../types";
-import { createSectionRegistry } from "../utils/section-registry";
-import { ClaudeSettingsCard } from "./claude-settings-card";
-import { GeminiSettingsCard } from "./gemini-settings-card";
-import { GlobalSettingsCard } from "./global-settings-card";
-import { GrokSettingsCard } from "./grok-settings-card";
-import { RoutingReliabilitySection } from "./routing-reliability-section";
+import { IoNetDeploymentSettingsSection } from '../integrations/ionet-deployment-settings-section'
+import type { ModelSettings } from '../types'
+import { createSectionRegistry } from '../utils/section-registry'
+import { ClaudeSettingsCard } from './claude-settings-card'
+import { GeminiSettingsCard } from './gemini-settings-card'
+import { GlobalSettingsCard } from './global-settings-card'
+import { GrokSettingsCard } from './grok-settings-card'
 
 function formatJsonForEditor(value: string, fallback: string) {
-  const raw = (value ?? "").toString().trim();
-  if (!raw) return fallback;
+  const raw = (value ?? '').toString().trim()
+  if (!raw) return fallback
   try {
-    return JSON.stringify(JSON.parse(raw), null, 2);
+    return JSON.stringify(JSON.parse(raw), null, 2)
   } catch {
-    return fallback;
+    return fallback
   }
 }
 
 const MODELS_SECTIONS = [
   {
-    id: "quality-tests",
-    titleKey: "Model quality tests",
+    id: 'quality-tests',
+    titleKey: 'Model quality tests',
     build: () => <QualityTestSettings />,
   },
   {
-    id: "global",
-    titleKey: "Global Model Configuration",
+    id: 'global',
+    titleKey: 'Global Model Configuration',
     build: (settings: ModelSettings) => (
       <GlobalSettingsCard
         defaultValues={{
           global: {
             pass_through_request_enabled:
-              settings["global.pass_through_request_enabled"],
+              settings['global.pass_through_request_enabled'],
             thinking_model_blacklist: formatJsonForEditor(
-              settings["global.thinking_model_blacklist"],
-              "[]",
+              settings['global.thinking_model_blacklist'],
+              '[]'
             ),
             chat_completions_to_responses_policy: formatJsonForEditor(
-              settings["global.chat_completions_to_responses_policy"],
-              "{}",
+              settings['global.chat_completions_to_responses_policy'],
+              '{}'
             ),
           },
           general_setting: {
             ping_interval_enabled:
-              settings["general_setting.ping_interval_enabled"],
+              settings['general_setting.ping_interval_enabled'],
             ping_interval_seconds:
-              settings["general_setting.ping_interval_seconds"],
+              settings['general_setting.ping_interval_seconds'],
           },
         }}
       />
     ),
   },
+
   {
-    id: "routing-reliability",
-    titleKey: "Routing Reliability",
-    build: (settings: ModelSettings) => (
-      <RoutingReliabilitySection
-        defaultValues={{
-          RetryTimes: settings.RetryTimes,
-          ModelRetryTimes: settings.ModelRetryTimes,
-          ChannelDisableThreshold: settings.ChannelDisableThreshold,
-          AutomaticDisableChannelEnabled:
-            settings.AutomaticDisableChannelEnabled,
-          AutomaticEnableChannelEnabled: settings.AutomaticEnableChannelEnabled,
-          AutomaticDisableKeywords: settings.AutomaticDisableKeywords,
-          AutomaticDisableStatusCodes: settings.AutomaticDisableStatusCodes,
-          AutomaticRetryStatusCodes: settings.AutomaticRetryStatusCodes,
-          "monitor_setting.auto_test_channel_enabled":
-            settings["monitor_setting.auto_test_channel_enabled"],
-          "monitor_setting.auto_test_channel_minutes":
-            settings["monitor_setting.auto_test_channel_minutes"],
-          "monitor_setting.channel_test_concurrency":
-            settings["monitor_setting.channel_test_concurrency"],
-          "monitor_setting.channel_test_mode":
-            settings["monitor_setting.channel_test_mode"],
-          "monitor_setting.channel_test_prompt":
-            settings["monitor_setting.channel_test_prompt"],
-          "monitor_setting.channel_test_max_tokens":
-            settings["monitor_setting.channel_test_max_tokens"],
-          "monitor_setting.channel_test_models":
-            settings["monitor_setting.channel_test_models"],
-          "perf_metrics_setting.exclude_errors_enabled":
-            settings["perf_metrics_setting.exclude_errors_enabled"],
-          "perf_metrics_setting.excluded_status_codes":
-            settings["perf_metrics_setting.excluded_status_codes"],
-        }}
-      />
-    ),
-  },
-  {
-    id: "gemini",
-    titleKey: "Gemini",
+    id: 'gemini',
+    titleKey: 'Gemini',
     build: (settings: ModelSettings) => (
       <GeminiSettingsCard
         defaultValues={{
           gemini: {
-            safety_settings: settings["gemini.safety_settings"],
-            version_settings: settings["gemini.version_settings"],
+            safety_settings: settings['gemini.safety_settings'],
+            version_settings: settings['gemini.version_settings'],
             supported_imagine_models:
-              settings["gemini.supported_imagine_models"],
+              settings['gemini.supported_imagine_models'],
             thinking_adapter_enabled:
-              settings["gemini.thinking_adapter_enabled"],
+              settings['gemini.thinking_adapter_enabled'],
             thinking_adapter_budget_tokens_percentage:
-              settings["gemini.thinking_adapter_budget_tokens_percentage"],
+              settings['gemini.thinking_adapter_budget_tokens_percentage'],
             function_call_thought_signature_enabled:
-              settings["gemini.function_call_thought_signature_enabled"],
+              settings['gemini.function_call_thought_signature_enabled'],
             remove_function_response_id_enabled:
-              settings["gemini.remove_function_response_id_enabled"],
+              settings['gemini.remove_function_response_id_enabled'],
           },
         }}
       />
     ),
   },
   {
-    id: "claude",
-    titleKey: "Claude",
+    id: 'claude',
+    titleKey: 'Claude',
     build: (settings: ModelSettings) => (
       <ClaudeSettingsCard
         defaultValues={{
           claude: {
-            model_headers_settings: settings["claude.model_headers_settings"],
-            default_max_tokens: settings["claude.default_max_tokens"],
+            model_headers_settings: settings['claude.model_headers_settings'],
+            default_max_tokens: settings['claude.default_max_tokens'],
             thinking_adapter_enabled:
-              settings["claude.thinking_adapter_enabled"],
+              settings['claude.thinking_adapter_enabled'],
             thinking_adapter_budget_tokens_percentage:
-              settings["claude.thinking_adapter_budget_tokens_percentage"],
+              settings['claude.thinking_adapter_budget_tokens_percentage'],
           },
         }}
       />
     ),
   },
   {
-    id: "grok",
-    titleKey: "Grok",
+    id: 'grok',
+    titleKey: 'Grok',
     build: (settings: ModelSettings) => (
       <GrokSettingsCard
         defaultValues={{
-          "grok.violation_deduction_enabled":
-            settings["grok.violation_deduction_enabled"] ?? true,
-          "grok.violation_deduction_amount":
-            settings["grok.violation_deduction_amount"] ?? 0.05,
+          'grok.violation_deduction_enabled':
+            settings['grok.violation_deduction_enabled'] ?? true,
+          'grok.violation_deduction_amount':
+            settings['grok.violation_deduction_amount'] ?? 0.05,
         }}
       />
     ),
   },
 
   {
-    id: "model-deployment",
-    titleKey: "Model Deployment",
+    id: 'model-deployment',
+    titleKey: 'Model Deployment',
     build: (settings: ModelSettings) => (
       <IoNetDeploymentSettingsSection
         defaultValues={{
-          enabled: settings["model_deployment.ionet.enabled"],
-          apiKey: settings["model_deployment.ionet.api_key"],
+          enabled: settings['model_deployment.ionet.enabled'],
+          apiKey: settings['model_deployment.ionet.api_key'],
         }}
       />
     ),
   },
-] as const;
+] as const
 
-export type ModelSectionId = (typeof MODELS_SECTIONS)[number]["id"];
+export type ModelSectionId = (typeof MODELS_SECTIONS)[number]['id']
 
 const modelsRegistry = createSectionRegistry<ModelSectionId, ModelSettings>({
   sections: MODELS_SECTIONS,
-  defaultSection: "global",
-  basePath: "/system-settings/models",
-  urlStyle: "path",
-});
+  defaultSection: 'global',
+  basePath: '/system-settings/models',
+  urlStyle: 'path',
+})
 
-export const MODELS_SECTION_IDS = modelsRegistry.sectionIds;
-export const MODELS_DEFAULT_SECTION = modelsRegistry.defaultSection;
-export const getModelsSectionNavItems = modelsRegistry.getSectionNavItems;
-export const getModelsSectionContent = modelsRegistry.getSectionContent;
-export const getModelsSectionMeta = modelsRegistry.getSectionMeta;
+export const MODELS_SECTION_IDS = modelsRegistry.sectionIds
+export const MODELS_DEFAULT_SECTION = modelsRegistry.defaultSection
+export const getModelsSectionNavItems = modelsRegistry.getSectionNavItems
+export const getModelsSectionContent = modelsRegistry.getSectionContent
+export const getModelsSectionMeta = modelsRegistry.getSectionMeta

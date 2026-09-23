@@ -62,6 +62,22 @@ import { safeNumberFieldProps } from '../utils/numeric-field'
 import type { HealthSettings } from './defaults'
 import { useSavePolicy } from './use-save-policy'
 
+const parseExcludedStatusCodes = (value: string) => {
+  const tokens = value
+    .split(/[\s,]+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+  const codes: number[] = []
+  for (const token of tokens) {
+    const code = Number(token)
+    if (!Number.isInteger(code) || code < 100 || code > 599) {
+      return { ok: false, codes }
+    }
+    codes.push(code)
+  }
+  return { ok: true, codes }
+}
+
 const numericString = z.string().refine((value) => {
   const trimmed = value.trim()
   if (!trimmed) return true
@@ -86,7 +102,27 @@ const createChannelHealthSchema = (
       AutomaticEnableChannelEnabled: z.boolean(),
       AutomaticDisableKeywords: z.string(),
       AutomaticDisableStatusCodes: z.string(),
+      perf_metrics_setting: z.object({
+        exclude_errors_enabled: z.boolean(),
+        excluded_status_codes: z
+          .string()
+          .refine(
+            (value) => parseExcludedStatusCodes(value).ok,
+            t('Use comma-separated HTTP status codes from 100 to 599.')
+          ),
+      }),
       monitor_setting: z.object({
+        channel_test_prompt: z
+          .string()
+          .max(20000, t('Test prompt must not exceed 20,000 characters')),
+        channel_test_max_tokens: z.coerce
+          .number()
+          .int(t('Enter a positive integer'))
+          .min(1, t('Test output limit must be between 1 and 32,768 tokens'))
+          .max(
+            32768,
+            t('Test output limit must be between 1 and 32,768 tokens')
+          ),
         auto_test_channel_enabled: z.boolean(),
         auto_test_channel_minutes: z.coerce
           .number()
@@ -136,6 +172,10 @@ type NormalizedChannelHealthValues = {
   AutomaticEnableChannelEnabled: boolean
   AutomaticDisableKeywords: string
   AutomaticDisableStatusCodes: string
+  'perf_metrics_setting.exclude_errors_enabled': boolean
+  'perf_metrics_setting.excluded_status_codes': string
+  'monitor_setting.channel_test_prompt': string
+  'monitor_setting.channel_test_max_tokens': number
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.channel_test_concurrency': number
@@ -159,7 +199,18 @@ const buildFormDefaults = (
     defaults.AutomaticDisableKeywords ?? ''
   ),
   AutomaticDisableStatusCodes: defaults.AutomaticDisableStatusCodes ?? '',
+  perf_metrics_setting: {
+    exclude_errors_enabled:
+      defaults['perf_metrics_setting.exclude_errors_enabled'],
+    excluded_status_codes:
+      defaults['perf_metrics_setting.excluded_status_codes'] ?? '',
+  },
   monitor_setting: {
+    channel_test_prompt: normalizeLineEndings(
+      defaults['monitor_setting.channel_test_prompt'] ?? ''
+    ),
+    channel_test_max_tokens:
+      defaults['monitor_setting.channel_test_max_tokens'],
     auto_test_channel_enabled:
       defaults['monitor_setting.auto_test_channel_enabled'],
     auto_test_channel_minutes:
@@ -184,6 +235,15 @@ const normalizeDefaults = (
   AutomaticDisableStatusCodes: parseHttpStatusCodeRules(
     defaults.AutomaticDisableStatusCodes ?? ''
   ).normalized,
+  'perf_metrics_setting.exclude_errors_enabled':
+    defaults['perf_metrics_setting.exclude_errors_enabled'],
+  'perf_metrics_setting.excluded_status_codes':
+    defaults['perf_metrics_setting.excluded_status_codes'] ?? '',
+  'monitor_setting.channel_test_prompt': normalizeLineEndings(
+    defaults['monitor_setting.channel_test_prompt'] ?? ''
+  ).trim(),
+  'monitor_setting.channel_test_max_tokens':
+    defaults['monitor_setting.channel_test_max_tokens'],
   'monitor_setting.auto_test_channel_enabled':
     defaults['monitor_setting.auto_test_channel_enabled'],
   'monitor_setting.auto_test_channel_minutes':
@@ -207,6 +267,15 @@ const normalizeFormValues = (
   AutomaticDisableStatusCodes: parseHttpStatusCodeRules(
     values.AutomaticDisableStatusCodes
   ).normalized,
+  'perf_metrics_setting.exclude_errors_enabled':
+    values.perf_metrics_setting.exclude_errors_enabled,
+  'perf_metrics_setting.excluded_status_codes':
+    values.perf_metrics_setting.excluded_status_codes.trim(),
+  'monitor_setting.channel_test_prompt': normalizeLineEndings(
+    values.monitor_setting.channel_test_prompt
+  ).trim(),
+  'monitor_setting.channel_test_max_tokens':
+    values.monitor_setting.channel_test_max_tokens,
   'monitor_setting.auto_test_channel_enabled':
     values.monitor_setting.auto_test_channel_enabled,
   'monitor_setting.auto_test_channel_minutes':
@@ -355,6 +424,54 @@ export function ChannelHealthSection({
                 >
                   <FormField
                     control={form.control}
+                    name='monitor_setting.channel_test_prompt'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Channel test prompt')}</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            {...field}
+                            className='min-h-28'
+                            placeholder={t(
+                              'Enter a question to evaluate model responses'
+                            )}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Used for manual and scheduled text-model tests. Leave blank to compare 9.11 and 9.9.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='monitor_setting.channel_test_max_tokens'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Test maximum output tokens')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            min={1}
+                            max={32768}
+                            step={1}
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Allow enough tokens for the answer and any model reasoning. Default: 4,096.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
                     name='monitor_setting.channel_test_mode'
                     render={({ field }) => (
                       <FormItem>
@@ -481,6 +598,56 @@ export function ChannelHealthSection({
                       />
                     </FormControl>
                   </SettingsSwitchItem>
+                )}
+              />
+            </SettingsFormGrid>
+          </div>
+
+          <Separator />
+
+          <div className='flex min-w-0 flex-col gap-4'>
+            <h4 className='text-sm font-medium'>
+              {t('Model square statistics')}
+            </h4>
+            <SettingsFormGrid>
+              <FormField
+                control={form.control}
+                name='perf_metrics_setting.exclude_errors_enabled'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>{t('Exclude selected failures')}</FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Do not count selected failed response status codes in model square success-rate metrics.'
+                        )}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='perf_metrics_setting.excluded_status_codes'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Excluded status codes')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder={t('e.g. 429, 500, 503')} />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Use comma-separated HTTP status codes from 100 to 599.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
                 )}
               />
             </SettingsFormGrid>

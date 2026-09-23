@@ -31,6 +31,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -119,6 +120,7 @@ beforeEach(() => {
   settings = {
     ...defaultRequestPolicySettings,
     RetryTimes: 2,
+    ModelRetryTimes: '{}',
     AutomaticRetryStatusCodes: '429,500-503',
     AutomaticDisableChannelEnabled: true,
     AutomaticEnableChannelEnabled: true,
@@ -230,6 +232,35 @@ describe('request policy settings', () => {
       )
     }
   )
+
+  it('saving a routing draft writes model retry overrides atomically', async () => {
+    await renderPolicies('/system-settings/request-policies/routing')
+    const editor = await screen.findByRole('group', {
+      name: 'Per-model retry limits',
+    })
+    await userEvent.click(
+      within(editor).getByRole('button', { name: 'Add Row' })
+    )
+    fireEvent.change(
+      within(editor).getAllByRole('textbox', { name: 'Model name' })[0],
+      { target: { value: 'special-model' } }
+    )
+    fireEvent.change(
+      within(editor).getAllByRole('textbox', { name: 'Retry Times' })[0],
+      { target: { value: '0' } }
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledExactlyOnceWith(
+        '/api/option/request_policy',
+        {
+          options: {
+            ModelRetryTimes: JSON.stringify({ 'special-model': 0 }, null, 2),
+          },
+        }
+      )
+    )
+  })
 
   it('turning filtering off preserves the prompt switch and keyword list', async () => {
     await renderPolicies('/system-settings/request-policies/filtering')

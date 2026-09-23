@@ -21,6 +21,7 @@ import type { SecuritySettings } from '../types'
 
 export type RetrySettings = {
   RetryTimes: number
+  ModelRetryTimes: string
   AutomaticRetryStatusCodes: string
 }
 export type HealthSettings = {
@@ -29,9 +30,13 @@ export type HealthSettings = {
   AutomaticEnableChannelEnabled: boolean
   AutomaticDisableKeywords: string
   AutomaticDisableStatusCodes: string
+  'perf_metrics_setting.exclude_errors_enabled': boolean
+  'perf_metrics_setting.excluded_status_codes': string
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.channel_test_concurrency': number
+  'monitor_setting.channel_test_prompt': string
+  'monitor_setting.channel_test_max_tokens': number
   'monitor_setting.channel_test_mode':
     | 'scheduled_all'
     | 'auto_ban_only'
@@ -48,6 +53,7 @@ export type RequestPolicySettings = RetrySettings &
 
 export const defaultRequestPolicySettings: RequestPolicySettings = {
   RetryTimes: 0,
+  ModelRetryTimes: '{}',
   AutomaticRetryStatusCodes:
     '100-199,300-399,401-407,409-499,500-503,505-523,525-599',
   ChannelDisableThreshold: '',
@@ -55,9 +61,13 @@ export const defaultRequestPolicySettings: RequestPolicySettings = {
   AutomaticEnableChannelEnabled: false,
   AutomaticDisableKeywords: '',
   AutomaticDisableStatusCodes: '401',
+  'perf_metrics_setting.exclude_errors_enabled': false,
+  'perf_metrics_setting.excluded_status_codes': '',
   'monitor_setting.auto_test_channel_enabled': false,
   'monitor_setting.auto_test_channel_minutes': 10,
   'monitor_setting.channel_test_concurrency': 1,
+  'monitor_setting.channel_test_prompt': '',
+  'monitor_setting.channel_test_max_tokens': 4096,
   'monitor_setting.channel_test_mode': 'scheduled_all',
   'channel_affinity_setting.enabled': false,
   'channel_affinity_setting.session_mode': '',

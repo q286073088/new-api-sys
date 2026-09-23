@@ -6,6 +6,23 @@ import { parseHttpStatusCodeRules } from '@/lib/http-status-code-rules'
 export function createRoutingPolicySchema(t: TFunction) {
   return z.object({
     RetryTimes: z.number().int().min(0).max(99),
+    ModelRetryTimes: z.string().refine((value) => {
+      try {
+        const parsed: unknown = JSON.parse(value || '{}')
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return false
+        }
+        return Object.entries(parsed).every(
+          ([model, count]) =>
+            model.trim() !== '' &&
+            Number.isInteger(count) &&
+            count >= 0 &&
+            count <= 10
+        )
+      } catch {
+        return false
+      }
+    }, t('Use exact model names and whole retry counts from 0 to 10.')),
     AutomaticRetryStatusCodes: z
       .string()
       .refine(
@@ -48,6 +65,7 @@ export function routingPolicyFormValues(
 ): RoutingPolicyFormValues {
   return {
     RetryTimes: Number(options.RetryTimes),
+    ModelRetryTimes: options.ModelRetryTimes || '{}',
     AutomaticRetryStatusCodes: options.AutomaticRetryStatusCodes,
     channel_affinity_setting: {
       enabled: options['channel_affinity_setting.enabled'] === 'true',
@@ -71,6 +89,7 @@ export function routingPolicyOptions(
 ): Record<string, string> {
   return {
     RetryTimes: String(values.RetryTimes),
+    ModelRetryTimes: values.ModelRetryTimes.trim() || '{}',
     AutomaticRetryStatusCodes: values.AutomaticRetryStatusCodes,
     ...Object.fromEntries(
       Object.entries(values.channel_affinity_setting).map(([key, value]) => [

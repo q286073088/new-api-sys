@@ -94,7 +94,8 @@ export const RULE_TEMPLATES: Record<string, RuleTemplate> = {
     param_override_template: buildCodexPassHeadersTemplate(),
     value_regex: '',
     ttl_seconds: 0,
-    skip_retry_on_failure: true,
+    skip_retry_on_failure: false,
+    session_mode: 'prefer',
     include_using_group: true,
     include_model_name: false,
     include_rule_name: true,
@@ -109,7 +110,8 @@ export const RULE_TEMPLATES: Record<string, RuleTemplate> = {
     ),
     value_regex: '',
     ttl_seconds: 0,
-    skip_retry_on_failure: true,
+    skip_retry_on_failure: false,
+    session_mode: 'prefer',
     include_using_group: true,
     include_model_name: false,
     include_rule_name: true,
@@ -130,5 +132,5 @@ export function makeUniqueName(
 }
 
 export function cloneTemplate<T>(template: T): T {
-  return JSON.parse(JSON.stringify(template))
+  return structuredClone(template)
 }
