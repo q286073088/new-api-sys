@@ -65,7 +65,11 @@ export function ModelCardGrid(props: ModelCardGridProps) {
     for (const model of perfQuery.data?.data?.models ?? []) {
       map.set(model.model_name, {
         avg_ttft_ms: model.best_group?.avg_ttft_ms ?? 0,
-        avg_tps: model.best_group?.avg_tps ?? 0,
+        avg_tps:
+          (model.best_group?.avg_tps ?? 0) > 0
+            ? (model.best_group?.avg_tps ?? 0)
+            : (model.avg_tps ?? 0),
+        avg_latency_ms: model.avg_latency_ms ?? 0,
         success_rate: model.success_rate,
         recent_success_series: model.recent_success_series,
       })

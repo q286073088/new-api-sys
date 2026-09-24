@@ -451,7 +451,7 @@ describe('model cards', () => {
     expect(within(metrics).getByTitle('Average TTFT')).toBeVisible()
   })
 
-  it('keeps success visible without aggregate latency or throughput when no group has TTFT', () => {
+  it('falls back to aggregate latency and throughput when no group has TTFT', () => {
     queryClient.setQueryData(['perf-metrics-summary', 24], {
       success: true,
       data: {
@@ -473,8 +473,9 @@ describe('model cards', () => {
     const metrics = screen.getByLabelText(
       'Performance metrics for the last 24 hours'
     )
-    expect(within(metrics).getByText('—s')).toBeVisible()
-    expect(within(metrics).getByText('—t/s')).toBeVisible()
+    expect(within(metrics).getByText('1.20s')).toBeVisible()
+    expect(within(metrics).getByText('42.0t/s')).toBeVisible()
+    expect(within(metrics).getByTitle('Average latency')).toBeVisible()
     expect(within(metrics).getByText('90.0%')).toBeVisible()
   })
 
