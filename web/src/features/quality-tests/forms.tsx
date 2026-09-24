@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { ErrorState } from '@/components/error-state'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -208,6 +209,7 @@ export function QualityTaskForm({
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['quality-tests'] })
+      toast.success(t('Edit quality test saved note'))
       onClose()
     },
     onError: (error) => handleServerError(error),

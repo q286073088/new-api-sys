@@ -156,6 +156,10 @@ func SaveQualityTest(test *QualityTest) error {
 			test.CreatedAt = now
 			test.UpdatedAt = now
 			if test.Enabled {
+				// A freshly created enabled test runs once immediately, then
+				// follows its schedule. First-time setup stays observable
+				// instead of staying silent until the next interval elapses.
+				test.RequestedAt = now
 				test.NextRunAt = now + int64(test.IntervalMinutes)*60
 			}
 			return tx.Create(test).Error
@@ -170,7 +174,12 @@ func SaveQualityTest(test *QualityTest) error {
 		} else if !old.Enabled || old.IntervalMinutes != test.IntervalMinutes {
 			next = now + int64(test.IntervalMinutes)*60
 		}
-		return tx.Model(&old).Updates(map[string]any{"name": test.Name, "token_id": test.TokenID, "owner_id": test.OwnerID, "model": test.Model, "group_name": test.Group, "endpoint": test.Endpoint, "prompt": test.Prompt, "expected_answer": test.ExpectedAnswer, "interval_minutes": test.IntervalMinutes, "enabled": test.Enabled, "public": test.Public, "next_run_at": next, "updated_at": now}).Error
+		updates := map[string]any{"name": test.Name, "token_id": test.TokenID, "owner_id": test.OwnerID, "model": test.Model, "group_name": test.Group, "endpoint": test.Endpoint, "prompt": test.Prompt, "expected_answer": test.ExpectedAnswer, "interval_minutes": test.IntervalMinutes, "enabled": test.Enabled, "public": test.Public, "next_run_at": next, "updated_at": now}
+		if test.Enabled && !old.Enabled {
+			// Enabling a paused test also runs it once immediately.
+			updates["requested_at"] = now
+		}
+		return tx.Model(&old).Updates(updates).Error
 	})
 }
 
@@ -203,7 +212,9 @@ func UpdateQualityTestFlags(id int64, enabled, public *bool) error {
 			if !*enabled {
 				updates["next_run_at"] = 0
 			} else if !test.Enabled {
+				// Enabling runs the test once immediately, then on schedule.
 				updates["next_run_at"] = time.Now().Unix() + int64(test.IntervalMinutes)*60
+				updates["requested_at"] = time.Now().Unix()
 			}
 		}
 		if public != nil {

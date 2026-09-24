@@ -237,12 +237,10 @@ func TestQualitySchedulingSnapshotsAndLeases(t *testing.T) {
 	require.NoError(t, model.SaveQualityTest(&test))
 	var persisted model.QualityTest
 	require.NoError(t, db.First(&persisted, test.ID).Error)
+	// A newly created enabled test is requested for an immediate first run.
+	assert.InDelta(t, now, persisted.RequestedAt, 2)
 	assert.InDelta(t, now+1800, persisted.NextRunAt, 2)
-	result, err := model.ClaimQualityTest(test.ID, model.QualityJudge{}, now, task.TaskID, runner)
-	require.NoError(t, err)
-	assert.Nil(t, result)
-	require.NoError(t, model.RequestQualityTest(test.ID))
-	result, err = model.ClaimQualityTest(test.ID, model.QualityJudge{Instructions: "old judge"}, now, task.TaskID, runner)
+	result, err := model.ClaimQualityTest(test.ID, model.QualityJudge{Instructions: "old judge"}, now, task.TaskID, runner)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Error(t, model.RequestQualityTest(test.ID))

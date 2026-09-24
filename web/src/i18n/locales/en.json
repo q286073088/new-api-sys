@@ -2077,6 +2077,7 @@
     "Edit pricing rule {{name}}": "Edit pricing rule {{name}}",
     "Edit product": "Edit product",
     "Edit quality test": "Edit quality test",
+    "Edit quality test saved note": "Quality test saved. Scheduled tests run automatically; use Test now for an immediate run.",
     "Edit ratio override": "Edit ratio override",
     "Edit Rule": "Edit Rule",
     "Edit selectable group": "Edit selectable group",

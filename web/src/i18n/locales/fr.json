@@ -2077,6 +2077,7 @@
     "Edit pricing rule {{name}}": "Modifier la règle {{name}}",
     "Edit product": "Modifier le produit",
     "Edit quality test": "Modifier le test de qualité",
+    "Edit quality test saved note": "Test de qualite enregistre. Les tests planifies s executent automatiquement ; utilisez Tester maintenant pour un lancement immediat.",
     "Edit ratio override": "Modifier le remplacement de ratio",
     "Edit Rule": "Modifier la règle",
     "Edit selectable group": "Modifier le groupe sélectionnable",

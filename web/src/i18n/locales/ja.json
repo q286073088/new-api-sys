@@ -2077,6 +2077,7 @@
     "Edit pricing rule {{name}}": "料金ルール {{name}} を編集",
     "Edit product": "製品を編集",
     "Edit quality test": "品質テストを編集",
+    "Edit quality test saved note": "品質テストを保存しました。定期テストは自動実行されます。すぐ実行するには「今すぐテスト」をクリックしてください。",
     "Edit ratio override": "倍率オーバーライドを編集",
     "Edit Rule": "ルール編集",
     "Edit selectable group": "選択可能なグループを編集",

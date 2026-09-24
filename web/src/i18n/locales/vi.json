@@ -2077,6 +2077,7 @@
     "Edit pricing rule {{name}}": "Sửa quy tắc định giá {{name}}",
     "Edit product": "Chỉnh sửa sản phẩm",
     "Edit quality test": "Sửa kiểm tra chất lượng",
+    "Edit quality test saved note": "Đã lưu bài kiểm tra chất lượng. Các bài kiểm tra theo lịch tự động chạy; dùng Kiểm tra ngay để chạy tức thì.",
     "Edit ratio override": "Chỉnh sửa ghi đè tỷ lệ",
     "Edit Rule": "Sửa quy tắc",
     "Edit selectable group": "Chỉnh sửa nhóm có thể chọn",

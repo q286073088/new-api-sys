@@ -2077,6 +2077,7 @@
     "Edit pricing rule {{name}}": "編輯定價規則 {{name}}",
     "Edit product": "編輯產品",
     "Edit quality test": "編輯降智測試",
+    "Edit quality test saved note": "編輯降智測試已儲存。定時測試會自動執行；如需立即執行請點擊「立即測試」。",
     "Edit ratio override": "編輯倍率覆蓋",
     "Edit Rule": "編輯規則",
     "Edit selectable group": "編輯可選分組",

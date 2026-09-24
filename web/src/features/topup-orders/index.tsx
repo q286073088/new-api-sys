@@ -280,7 +280,7 @@ export function TopupOrders() {
 
   return (
     <>
-      <SectionPageLayout fixedContent>
+      <SectionPageLayout>
         <SectionPageLayout.Title>{t('Order Details')}</SectionPageLayout.Title>
         <SectionPageLayout.Content>
           <div className='space-y-3'>
