@@ -39,6 +39,7 @@ import {
   isTimingLogType,
 } from '../lib/utils'
 import { ModelBadge, ResponseModelDetails } from './model-badge'
+import { IpLocationCell } from './columns/ip-location-cell'
 import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
 import { useUsageLogsContext } from './usage-logs-provider'
 
@@ -379,6 +380,9 @@ export function CommonLogMobileCard<TData>(props: {
                   channelCell.getContext()
                 )}
               </div>
+            )}
+            {selectedField === 'ip' && (
+              <IpLocationCell ip={log.ip} showIp={false} />
             )}
             {selectedField === 'user' && (
               <Button

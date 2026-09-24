@@ -204,3 +204,35 @@ it('uses the same column toggle on mobile and reveals the full IPv6 address on t
   const dialog = await screen.findByRole('dialog', { name: 'IP Address' })
   expect(within(dialog).getByText(ipv6)).toBeVisible()
 })
+
+it('looks up the IP region on demand and displays the returned location', async () => {
+  localStorage.setItem(
+    'usage-logs:common:self:column-visibility',
+    JSON.stringify({ ip: true })
+  )
+  const user = userEvent.setup()
+  const geoFetch = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      ip: ipv4,
+      city: 'Tokyo',
+      region: 'Tokyo',
+      country: 'Japan',
+    }),
+  })
+  vi.stubGlobal('fetch', geoFetch)
+
+  await renderLogs()
+
+  const lookup = screen.getByRole('button', {
+    name: `Get location: ${ipv4}`,
+  })
+  expect(geoFetch).not.toHaveBeenCalled()
+  await user.click(lookup)
+
+  expect(await screen.findByText('Tokyo, Japan')).toBeVisible()
+  expect(geoFetch).toHaveBeenCalledWith(
+    `https://get.geojs.io/v1/ip/geo/${ipv4}.json`,
+    expect.objectContaining({ signal: expect.any(AbortSignal) })
+  )
+})

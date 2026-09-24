@@ -76,6 +76,7 @@ import { LogCostDisplay } from '../log-cost-display'
 import { ModelBadge } from '../model-badge'
 import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
 import { useUsageLogsContext } from '../usage-logs-provider'
+import { IpLocationCell } from './ip-location-cell'
 
 interface DetailSegment {
   text: string
@@ -667,6 +668,12 @@ export function useCommonLogsColumns(
       size: 160,
     })
     columns.push(
+      {
+        accessorKey: 'ip',
+        header: t('IP Address'),
+        cell: ({ row }) => <IpLocationCell ip={row.original.ip} />,
+        size: 170,
+      },
       {
         accessorKey: 'model_name',
         header: t('Model'),
