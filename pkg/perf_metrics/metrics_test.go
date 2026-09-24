@@ -189,7 +189,7 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 			// Historical counters remain usable without reclassification or migration.
 			for _, row := range []model.PerfMetric{
 				{ModelName: "test-model", Group: "a", BucketTs: hour, RequestCount: 100, SuccessCount: 100, TotalLatencyMs: 100000, TtftCount: 100, TtftSumMs: 10000, OutputTokens: 200, GenerationMs: 40000},
-				{ModelName: "test-model", Group: "inactive", BucketTs: hour, RequestCount: 100},
+				{ModelName: "test-model", Group: "inactive", BucketTs: hour, RequestCount: 100, TtftSumMs: 1, TtftCount: 1, OutputTokens: 1000, GenerationMs: 1000},
 				{ModelName: "test-model", Group: "a", BucketTs: start - 3600, RequestCount: 100},
 			} {
 				require.NoError(t, model.UpsertPerfMetric(&row))
@@ -203,12 +203,12 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 			assert.Equal(t, 100.0, businessRejected.Summary.SuccessRate)
 
 			failure := &atomicBucket{}
-			failure.add(Sample{LatencyMs: 2000})
+			failure.add(Sample{LatencyMs: 2000, HasTtft: true, TtftMs: 50, OutputTokens: 30, GenerationMs: 1000})
 			hotBuckets.Store(bucketKey{model: "test-model", group: "b", bucketTs: hour}, failure)
 			before, err := Query(QueryParams{Model: "test-model", Hours: 24, AllowedGroups: groups})
 			require.NoError(t, err)
 			require.NotNil(t, before.Summary)
-			assert.Equal(t, Summary{SuccessRate: 99.01, AvgLatencyMs: 1009, AvgTps: 5}, *before.Summary)
+			assert.Equal(t, Summary{SuccessRate: 99.01, AvgLatencyMs: 1009, AvgTps: 5.61}, *before.Summary)
 			assert.Equal(t, start, before.WindowStart)
 			require.Len(t, before.Series, 1)
 			assert.Equal(t, hour, before.Series[0].Ts)
@@ -219,6 +219,8 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, before.Summary, summary.Summary)
 			require.Len(t, summary.Models, 1)
+			require.NotNil(t, summary.Models[0].BestGroup)
+			assert.Equal(t, BestGroupPerformance{Group: "b", AvgTtftMs: 50, AvgTps: 30}, *summary.Models[0].BestGroup)
 			assert.Equal(t, 99.01, summary.Models[0].SuccessRate)
 			assert.Equal(t, 99.01, summary.Models[0].RecentSuccessSeries[0].SuccessRate)
 			encoded, err := common.Marshal(summary)
@@ -232,6 +234,11 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, before.Summary, after.Summary)
 			assert.Equal(t, before.Series, after.Series)
+			afterSummary, err := QuerySummaryAll(24, groups)
+			require.NoError(t, err)
+			require.Len(t, afterSummary.Models, 1)
+			require.NotNil(t, afterSummary.Models[0].BestGroup)
+			assert.Equal(t, *summary.Models[0].BestGroup, *afterSummary.Models[0].BestGroup)
 
 			RecordRelayResult(context.Background(), &relaycommon.RelayInfo{OriginModelName: "test-model", UsingGroup: "a", StartTime: now}, types.InitOpenAIError("context_length_exceeded", 400))
 			after, err = Query(QueryParams{Model: "test-model", Hours: 24, AllowedGroups: groups})
