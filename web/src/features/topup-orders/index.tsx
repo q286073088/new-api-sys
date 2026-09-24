@@ -17,16 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  getCoreRowModel,
-  useReactTable,
-  type ColumnDef,
-} from '@tanstack/react-table'
 import { Search } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { DataTablePagination, DataTableView } from '@/components/data-table'
+import {
+  StaticDataTable,
+  type StaticDataTableColumn,
+} from '@/components/data-table'
 import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge, type StatusVariant } from '@/components/status-badge'
@@ -208,63 +206,63 @@ export function TopupOrders() {
   )
   const orders = query.data?.items ?? []
 
-  const columns: ColumnDef<TopupOrder>[] = [
-    { accessorKey: 'id', header: t('ID'), size: 70 },
+  const columns: StaticDataTableColumn<TopupOrder>[] = [
+    { id: 'id', header: t('ID'), cell: (order) => order.id },
     {
-      accessorKey: 'username',
+      id: 'username',
       header: t('User'),
-      cell: ({ row }) => (
+      cell: (order) => (
         <div className='max-w-44 truncate'>
-          <div>{row.original.username || `#${row.original.user_id}`}</div>
-          {row.original.display_name && (
+          <div>{order.username || `#${order.user_id}`}</div>
+          {order.display_name && (
             <div className='text-muted-foreground truncate text-xs'>
-              {row.original.display_name}
+              {order.display_name}
             </div>
           )}
         </div>
       ),
     },
     {
-      accessorKey: 'trade_no',
+      id: 'trade_no',
       header: t('Trade No.'),
-      cell: ({ row }) => (
+      cell: (order) => (
         <code className='block max-w-56 truncate font-mono text-xs'>
-          {row.original.trade_no}
+          {order.trade_no}
         </code>
       ),
     },
     {
-      accessorKey: 'create_time',
+      id: 'create_time',
       header: t('Created at'),
-      cell: ({ row }) => formatTimestampToDate(row.original.create_time),
+      cell: (order) => formatTimestampToDate(order.create_time),
     },
     {
-      accessorKey: 'credited_quota',
+      id: 'credited_quota',
       header: t('Credited amount'),
-      cell: ({ row }) => formatQuota(row.original.credited_quota),
+      cell: (order) => formatQuota(order.credited_quota),
     },
     {
-      accessorKey: 'money',
+      id: 'money',
       header: t('Payment amount'),
-      cell: ({ row }) =>
-        formatLocalCurrencyAmount(row.original.money || 0, {
+      cell: (order) =>
+        formatLocalCurrencyAmount(order.money || 0, {
           digitsLarge: 2,
           digitsSmall: 2,
           abbreviate: false,
         }),
     },
     {
-      accessorKey: 'payment_method',
+      id: 'payment_method',
       header: t('Payment channel'),
-      cell: ({ row }) => paymentChannel(row.original),
+      cell: (order) => paymentChannel(order),
     },
     {
-      accessorKey: 'status',
+      id: 'status',
       header: t('Status'),
-      cell: ({ row }) => (
+      cell: (order) => (
         <StatusBadge
-          label={t(orderStatuses[row.original.status].label)}
-          variant={orderStatuses[row.original.status].variant}
+          label={t(orderStatuses[order.status].label)}
+          variant={orderStatuses[order.status].variant}
           copyable={false}
         />
       ),
@@ -272,125 +270,149 @@ export function TopupOrders() {
     {
       id: 'actions',
       header: t('Actions'),
-      cell: ({ row }) => (
-        <Button
-          size='sm'
-          variant='ghost'
-          onClick={() => setOrderId(row.original.id)}
-        >
+      cell: (order) => (
+        <Button size='sm' variant='ghost' onClick={() => setOrderId(order.id)}>
           {t('Details')}
         </Button>
       ),
     },
   ]
-  const table = useReactTable({
-    columns,
-    data: orders,
-    getCoreRowModel: getCoreRowModel(),
-    getRowId: (row) => String(row.id),
-    manualPagination: true,
-    rowCount: query.data?.total ?? 0,
-    state: { pagination },
-    onPaginationChange: setPagination,
-    enableSorting: false,
-  })
 
   return (
-    <SectionPageLayout fixedContent>
-      <SectionPageLayout.Title>{t('Order Details')}</SectionPageLayout.Title>
-      <SectionPageLayout.Content>
-        <div className='space-y-3'>
-          <div className='flex flex-wrap items-end gap-3'>
-            <div className='relative min-w-56 flex-1'>
-              <Search className='text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2' />
-              <Input
-                className='pl-9'
-                placeholder={t('Search user, display name or trade no.')}
-                value={keyword}
-                onChange={(event) => {
-                  setKeyword(event.target.value)
-                  setPagination((current) => ({ ...current, pageIndex: 0 }))
-                }}
-              />
-            </div>
-            <div className='w-36 space-y-1'>
-              <Label htmlFor='topup-order-status'>{t('Status')}</Label>
-              <NativeSelect
-                id='topup-order-status'
-                value={status}
-                onChange={(event) => {
-                  setStatus(event.target.value)
-                  setPagination((current) => ({ ...current, pageIndex: 0 }))
+    <>
+      <SectionPageLayout fixedContent>
+        <SectionPageLayout.Title>{t('Order Details')}</SectionPageLayout.Title>
+        <SectionPageLayout.Content>
+          <div className='space-y-3'>
+            <div className='flex flex-wrap items-end gap-3'>
+              <div className='relative min-w-56 flex-1'>
+                <Search className='text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2' />
+                <Input
+                  className='pl-9'
+                  placeholder={t('Search user, display name or trade no.')}
+                  value={keyword}
+                  onChange={(event) => {
+                    setKeyword(event.target.value)
+                    setPagination((current) => ({ ...current, pageIndex: 0 }))
+                  }}
+                />
+              </div>
+              <div className='w-36 space-y-1'>
+                <Label htmlFor='topup-order-status'>{t('Status')}</Label>
+                <NativeSelect
+                  id='topup-order-status'
+                  value={status}
+                  onChange={(event) => {
+                    setStatus(event.target.value)
+                    setPagination((current) => ({ ...current, pageIndex: 0 }))
+                  }}
+                >
+                  <option value=''>{t('All')}</option>
+                  {Object.entries(orderStatuses).map(([value, item]) => (
+                    <option key={value} value={value}>
+                      {t(item.label)}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className='w-44 space-y-1'>
+                <Label htmlFor='topup-order-from'>{t('Start time')}</Label>
+                <Input
+                  id='topup-order-from'
+                  type='datetime-local'
+                  value={from}
+                  onChange={(event) => {
+                    setFrom(event.target.value)
+                    setPagination((current) => ({ ...current, pageIndex: 0 }))
+                  }}
+                />
+              </div>
+              <div className='w-44 space-y-1'>
+                <Label htmlFor='topup-order-to'>{t('End time')}</Label>
+                <Input
+                  id='topup-order-to'
+                  type='datetime-local'
+                  value={to}
+                  onChange={(event) => {
+                    setTo(event.target.value)
+                    setPagination((current) => ({ ...current, pageIndex: 0 }))
+                  }}
+                />
+              </div>
+              <Button
+                variant='outline'
+                onClick={() => {
+                  setKeyword('')
+                  setStatus('')
+                  setFrom('')
+                  setTo('')
+                  setPagination({ pageIndex: 0, pageSize: pagination.pageSize })
+                  void queryClient.invalidateQueries({
+                    queryKey: ['topup-orders'],
+                  })
                 }}
               >
-                <option value=''>{t('All')}</option>
-                {Object.entries(orderStatuses).map(([value, item]) => (
-                  <option key={value} value={value}>
-                    {t(item.label)}
-                  </option>
-                ))}
-              </NativeSelect>
+                {t('Reset')}
+              </Button>
             </div>
-            <div className='w-44 space-y-1'>
-              <Label htmlFor='topup-order-from'>{t('Start time')}</Label>
-              <Input
-                id='topup-order-from'
-                type='datetime-local'
-                value={from}
-                onChange={(event) => {
-                  setFrom(event.target.value)
-                  setPagination((current) => ({ ...current, pageIndex: 0 }))
-                }}
-              />
-            </div>
-            <div className='w-44 space-y-1'>
-              <Label htmlFor='topup-order-to'>{t('End time')}</Label>
-              <Input
-                id='topup-order-to'
-                type='datetime-local'
-                value={to}
-                onChange={(event) => {
-                  setTo(event.target.value)
-                  setPagination((current) => ({ ...current, pageIndex: 0 }))
-                }}
-              />
-            </div>
-            <Button
-              variant='outline'
-              onClick={() => {
-                setKeyword('')
-                setStatus('')
-                setFrom('')
-                setTo('')
-                setPagination({ pageIndex: 0, pageSize: pagination.pageSize })
-                void queryClient.invalidateQueries({
-                  queryKey: ['topup-orders'],
-                })
-              }}
-            >
-              {t('Reset')}
-            </Button>
-          </div>
-          {query.isError ? (
-            <ErrorState onRetry={() => void query.refetch()} />
-          ) : (
-            <>
-              <DataTableView
-                table={table}
-                isLoading={query.isLoading}
-                emptyTitle={t('No orders')}
-                emptyDescription={t(
-                  'No recharge orders match the current filters.'
+            {query.isError ? (
+              <ErrorState onRetry={() => void query.refetch()} />
+            ) : (
+              <>
+                {query.isLoading ? (
+                  <div className='text-muted-foreground flex h-24 items-center justify-center text-sm'>
+                    {t('Loading...')}
+                  </div>
+                ) : orders.length === 0 ? (
+                  <div className='text-muted-foreground flex h-24 items-center justify-center text-sm'>
+                    {t('No recharge orders match the current filters.')}
+                  </div>
+                ) : (
+                  <StaticDataTable
+                    data={orders}
+                    getRowKey={(order) => order.id}
+                    columns={columns}
+                  />
                 )}
-                tableContainerClassName='overflow-x-auto'
-                tableClassName='min-w-[1080px]'
-              />
-              <DataTablePagination table={table} compact />
-            </>
-          )}
-        </div>
-      </SectionPageLayout.Content>
+                <div className='flex items-center justify-end gap-3'>
+                  <span className='text-muted-foreground text-sm'>
+                    {t('Total:')} {query.data?.total ?? 0} ·
+                    {pagination.pageIndex + 1}
+                  </span>
+                  <Button
+                    variant='outline'
+                    disabled={pagination.pageIndex === 0 || query.isFetching}
+                    onClick={() =>
+                      setPagination((current) => ({
+                        ...current,
+                        pageIndex: current.pageIndex - 1,
+                      }))
+                    }
+                  >
+                    {t('Previous')}
+                  </Button>
+                  <Button
+                    variant='outline'
+                    disabled={
+                      (pagination.pageIndex + 1) * pagination.pageSize >=
+                        (query.data?.total ?? 0) || query.isFetching
+                    }
+                    onClick={() =>
+                      setPagination((current) => ({
+                        ...current,
+                        pageIndex: current.pageIndex + 1,
+                      }))
+                    }
+                  >
+                    {t('Next')}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
       <OrderDetailDialog orderId={orderId} onClose={() => setOrderId(null)} />
-    </SectionPageLayout>
+    </>
   )
 }
