@@ -56,8 +56,16 @@ func (topUp *TopUp) CreditedQuota() int64 {
 	return int64(quota)
 }
 
+func billableTopUpDetailScope(query *gorm.DB) *gorm.DB {
+	adminCredit := "(COALESCE(top_ups.payment_provider, '') = ? OR (COALESCE(top_ups.payment_provider, '') = '' AND top_ups.payment_method = ?))"
+	return query.Where(
+		"(NOT "+adminCredit+" OR COALESCE(top_ups.invoice_amount_cents, 0) > 0)",
+		PaymentProviderAdmin, PaymentMethodAdmin,
+	)
+}
+
 func topUpDetailQuery(filter TopUpDetailFilter) (*gorm.DB, error) {
-	query := DB.Model(&TopUp{}).
+	query := billableTopUpDetailScope(DB.Model(&TopUp{})).
 		Select("top_ups.*, users.username AS username, users.display_name AS display_name").
 		Joins("LEFT JOIN users ON users.id = top_ups.user_id")
 	if filter.Keyword != "" {
@@ -107,7 +115,7 @@ func GetTopUpDetails(filter TopUpDetailFilter, page *common.PageInfo) ([]TopUpDe
 
 func GetTopUpDetail(id int) (*TopUpDetail, error) {
 	var item TopUpDetail
-	err := DB.Model(&TopUp{}).
+	err := billableTopUpDetailScope(DB.Model(&TopUp{})).
 		Select("top_ups.*, users.username AS username, users.display_name AS display_name").
 		Joins("LEFT JOIN users ON users.id = top_ups.user_id").
 		Where("top_ups.id = ?", id).
@@ -125,7 +133,7 @@ func GetTopUpDetail(id int) (*TopUpDetail, error) {
 func GetTopUpUserSummary(userID int) (TopUpUserSummary, error) {
 	var summary TopUpUserSummary
 	var orders []TopUp
-	if err := DB.Select("id", "amount", "money", "payment_method", "payment_provider", "is_gift", "complete_time").
+	if err := billableTopUpDetailScope(DB.Select("id", "amount", "money", "payment_method", "payment_provider", "is_gift", "complete_time")).
 		Where("user_id = ? AND status = ?", userID, common.TopUpStatusSuccess).
 		Order("complete_time ASC").Find(&orders).Error; err != nil {
 		return summary, err
@@ -144,7 +152,7 @@ func GetTopUpUserSummary(userID int) (TopUpUserSummary, error) {
 		}
 		summary.LastSuccessAt = order.CompleteTime
 	}
-	if err := DB.Model(&TopUp{}).Where("user_id = ?", userID).Count(&summary.OrderCount).Error; err != nil {
+	if err := billableTopUpDetailScope(DB.Model(&TopUp{})).Where("user_id = ?", userID).Count(&summary.OrderCount).Error; err != nil {
 		return summary, err
 	}
 	return summary, nil
